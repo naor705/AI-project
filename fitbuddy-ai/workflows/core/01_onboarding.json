@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "updates": ["message", "callback_query"],
+        "updates": ["message"],
         "additionalFields": {}
       },
       "id": "tg-trigger",
@@ -17,8 +17,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, first_name, onboarding_complete FROM users WHERE telegram_id = $1",
-        "additionalFields": { "queryParams": "={{ $json.message ? $json.message.from.id : $json.callback_query.from.id }}" }
+        "query": "SELECT id, first_name, onboarding_complete, onboarding_step FROM users WHERE telegram_id = $1",
+        "additionalFields": { "queryParams": "={{ $json.message.from.id }}" }
       },
       "id": "check-user",
       "name": "Check User",
@@ -41,9 +41,9 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message ? $('Telegram Trigger').item.json.message.from.id : $('Telegram Trigger').item.json.callback_query.from.id }}",
-        "text": "👋 Welcome back, <b>{{ $('Check User').item.json.first_name }}</b>!\n\nType /help to see all available commands.",
-        "additionalFields": { "parse_mode": "HTML" }
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "Welcome back! Type /help to see all available commands.",
+        "additionalFields": {}
       },
       "id": "send-welcome-back",
       "name": "Send Welcome Back",
@@ -68,7 +68,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO conversation_state (user_id, flow_id, step, context)\nVALUES ($1, 'onboarding', 'ask_name', '{}')\nON CONFLICT (user_id, flow_id) DO UPDATE SET updated_at=now()\nRETURNING id, step, context",
+        "query": "INSERT INTO conversation_state (user_id, flow_id, step, context)\nVALUES ($1, 'onboarding', 'ask_name', '{}'::jsonb)\nON CONFLICT (user_id, flow_id) DO UPDATE SET updated_at=now()\nRETURNING id, step, context",
         "additionalFields": { "queryParams": "={{ $json.id }}" }
       },
       "id": "get-conv-state",
@@ -104,8 +104,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "👋 Welcome to <b>FitBuddy AI</b>! I'm your personal fitness and nutrition coach powered by AI.\n\nLet's set up your profile — about 2 minutes.\n\n<b>What's your first name?</b>",
-        "additionalFields": { "parse_mode": "HTML" }
+        "text": "Welcome to FitBuddy AI! I'm your personal fitness and nutrition coach powered by AI.\n\nLet's set up your profile — about 2 minutes.\n\nWhat's your first name?",
+        "additionalFields": {}
       },
       "id": "ask-name",
       "name": "Ask Name",
@@ -117,8 +117,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "Nice to meet you! 💪\n\n<b>How old are you?</b>",
-        "additionalFields": { "parse_mode": "HTML" }
+        "text": "Nice to meet you!\n\nHow old are you? (type a number, e.g. 28)",
+        "additionalFields": {}
       },
       "id": "ask-age",
       "name": "Ask Age",
@@ -130,11 +130,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "<b>What's your gender?</b>",
-        "additionalFields": {
-          "parse_mode": "HTML",
-          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"👨 Male\",\"callback_data\":\"gender_male\"},{\"text\":\"👩 Female\",\"callback_data\":\"gender_female\"},{\"text\":\"⚧ Other\",\"callback_data\":\"gender_other\"}]]}"
-        }
+        "text": "What's your gender?\n\nReply with: male, female, or other",
+        "additionalFields": {}
       },
       "id": "ask-gender",
       "name": "Ask Gender",
@@ -146,8 +143,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "<b>What's your height in cm?</b>\n\nExample: <code>175</code>",
-        "additionalFields": { "parse_mode": "HTML" }
+        "text": "What's your height in cm?\n\nExample: 175",
+        "additionalFields": {}
       },
       "id": "ask-height",
       "name": "Ask Height",
@@ -159,8 +156,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "<b>What's your current weight in kg?</b>\n\nExample: <code>78</code>",
-        "additionalFields": { "parse_mode": "HTML" }
+        "text": "What's your current weight in kg?\n\nExample: 78",
+        "additionalFields": {}
       },
       "id": "ask-weight",
       "name": "Ask Weight",
@@ -172,11 +169,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "<b>How active are you on a typical day?</b>",
-        "additionalFields": {
-          "parse_mode": "HTML",
-          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"🪑 Sedentary\",\"callback_data\":\"activity_sedentary\"}],[{\"text\":\"🚶 Lightly Active\",\"callback_data\":\"activity_light\"}],[{\"text\":\"🏃 Moderately Active\",\"callback_data\":\"activity_moderate\"}],[{\"text\":\"💪 Active\",\"callback_data\":\"activity_active\"}],[{\"text\":\"🔥 Very Active\",\"callback_data\":\"activity_very_active\"}]]}"
-        }
+        "text": "How active are you on a typical day?\n\nReply with one of:\n- sedentary (desk job, little movement)\n- light (light exercise 1-3x/week)\n- moderate (moderate exercise 3-5x/week)\n- active (hard exercise 6-7x/week)\n- very_active (very hard exercise, physical job)",
+        "additionalFields": {}
       },
       "id": "ask-activity",
       "name": "Ask Activity",
@@ -188,11 +182,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "<b>What's your main fitness goal?</b>",
-        "additionalFields": {
-          "parse_mode": "HTML",
-          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"🎯 Toning & Fat Loss\",\"callback_data\":\"goal_toning\"}],[{\"text\":\"💪 Build Muscle\",\"callback_data\":\"goal_mass\"}],[{\"text\":\"⚖️ Maintenance\",\"callback_data\":\"goal_maintenance\"}]]}"
-        }
+        "text": "What's your main fitness goal?\n\nReply with one of:\n- toning (fat loss and toning)\n- mass (build muscle)\n- maintenance (maintain current weight)",
+        "additionalFields": {}
       },
       "id": "ask-goal",
       "name": "Ask Goal",
@@ -203,7 +194,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const triggerData = $('Telegram Trigger').item.json;\nconst convState = $('Get Conv State').item.json;\nconst userRow = $('Upsert User').item.json;\n\nconst messageText = triggerData.message?.text || '';\nconst callbackData = triggerData.callback_query?.data || '';\nconst inputValue = (messageText || callbackData).trim();\n\nconst step = convState.step;\nlet context = {};\ntry { context = typeof convState.context === 'string' ? JSON.parse(convState.context) : (convState.context || {}); } catch(e) { context = {}; }\n\nconst stepMap = {\n  ask_name:     { key: 'name',           next: 'ask_age' },\n  ask_age:      { key: 'age',            next: 'ask_gender' },\n  ask_gender:   { key: 'gender',         next: 'ask_height', fn: v => v.replace('gender_','') },\n  ask_height:   { key: 'height_cm',      next: 'ask_weight', fn: v => parseFloat(v) },\n  ask_weight:   { key: 'weight_kg',      next: 'ask_activity', fn: v => parseFloat(v) },\n  ask_activity: { key: 'activity_level', next: 'ask_goal', fn: v => v.replace('activity_','') },\n  ask_goal:     { key: 'goal',           next: 'complete', fn: v => v.replace('goal_','') }\n};\n\nconst cur = stepMap[step];\nif (cur) {\n  context[cur.key] = cur.fn ? cur.fn(inputValue) : inputValue;\n}\n\nlet dailyCalorieTarget = null;\nif (context.weight_kg && context.height_cm && context.age && context.gender && context.activity_level && context.goal) {\n  let bmr = context.gender === 'male'\n    ? 10*context.weight_kg + 6.25*context.height_cm - 5*context.age + 5\n    : 10*context.weight_kg + 6.25*context.height_cm - 5*context.age - 161;\n  const mult = {sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};\n  const tdee = bmr * (mult[context.activity_level] || 1.2);\n  const offset = {toning:-400,mass:300,maintenance:0};\n  dailyCalorieTarget = Math.round(tdee + (offset[context.goal] || 0));\n  context.daily_calorie_target = dailyCalorieTarget;\n}\n\nconst nextStep = cur ? cur.next : step;\n\nreturn [{ json: {\n  userId: userRow.id,\n  telegramId: triggerData.message?.from.id || triggerData.callback_query?.from.id,\n  nextStep,\n  context,\n  dailyCalorieTarget,\n  isComplete: nextStep === 'complete'\n} }];"
+        "jsCode": "const triggerData = $('Telegram Trigger').item.json;\nconst convState = $('Get Conv State').item.json;\nconst userRow = $('Upsert User').item.json;\n\nconst inputValue = (triggerData.message?.text || '').trim().toLowerCase();\n\nconst step = convState.step;\nlet context = {};\ntry { context = typeof convState.context === 'string' ? JSON.parse(convState.context) : (convState.context || {}); } catch(e) { context = {}; }\n\nconst stepMap = {\n  ask_name:     { key: 'name',           next: 'ask_age' },\n  ask_age:      { key: 'age',            next: 'ask_gender', fn: v => parseInt(v) || 25 },\n  ask_gender:   { key: 'gender',         next: 'ask_height' },\n  ask_height:   { key: 'height_cm',      next: 'ask_weight', fn: v => parseFloat(v) || 170 },\n  ask_weight:   { key: 'weight_kg',      next: 'ask_activity', fn: v => parseFloat(v) || 70 },\n  ask_activity: { key: 'activity_level', next: 'ask_goal' },\n  ask_goal:     { key: 'goal',           next: 'complete' }\n};\n\nconst cur = stepMap[step];\nif (cur) {\n  context[cur.key] = cur.fn ? cur.fn(inputValue) : inputValue;\n}\n\nlet dailyCalorieTarget = null;\nif (context.weight_kg && context.height_cm && context.age && context.gender && context.activity_level && context.goal) {\n  const isMale = context.gender === 'male';\n  let bmr = isMale\n    ? 10*context.weight_kg + 6.25*context.height_cm - 5*context.age + 5\n    : 10*context.weight_kg + 6.25*context.height_cm - 5*context.age - 161;\n  const mult = {sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};\n  const tdee = bmr * (mult[context.activity_level] || 1.2);\n  const offset = {toning:-400,mass:300,maintenance:0};\n  dailyCalorieTarget = Math.round(tdee + (offset[context.goal] || 0));\n  context.daily_calorie_target = dailyCalorieTarget;\n}\n\nconst nextStep = cur ? cur.next : step;\n\nreturn [{ json: {\n  userId: userRow.id,\n  telegramId: triggerData.message.from.id,\n  nextStep,\n  context,\n  dailyCalorieTarget,\n  isComplete: nextStep === 'complete'\n} }];"
       },
       "id": "process-response",
       "name": "Process Response",
@@ -265,8 +256,8 @@
     {
       "parameters": {
         "chatId": "={{ $('Process Response').item.json.telegramId }}",
-        "text": "🎉 <b>Profile complete!</b>\n\n📛 Name: {{ $('Save Profile').item.json.first_name }}\n🎂 Age: {{ $('Save Profile').item.json.age }}\n⚖️ Weight: {{ $('Save Profile').item.json.weight_kg }}kg | Height: {{ $('Save Profile').item.json.height_cm }}cm\n🎯 Goal: {{ $('Save Profile').item.json.goal }}\n🔥 Daily target: <b>{{ $('Save Profile').item.json.daily_calorie_target }} kcal</b>\n\n✅ I'll send your daily check-in every morning at <b>8:00 AM</b>.\n\nOr start now with /checkin 💪\n\n<b>Commands:</b>\n/checkin — Daily check-in\n/analyze — Analyze food photo\n/supplements — Supplement advice\n/progress — Weekly report\n/help — All commands",
-        "additionalFields": { "parse_mode": "HTML" }
+        "text": "={{ 'Profile complete!\n\nName: ' + $('Save Profile').item.json.first_name + '\nAge: ' + $('Save Profile').item.json.age + '\nWeight: ' + $('Save Profile').item.json.weight_kg + 'kg | Height: ' + $('Save Profile').item.json.height_cm + 'cm\nGoal: ' + $('Save Profile').item.json.goal + '\nDaily target: ' + $('Save Profile').item.json.daily_calorie_target + ' kcal\n\nI will send your daily check-in every morning at 8:00 AM.\n\nOr start now with /checkin\n\nCommands:\n/checkin - Daily check-in\n/analyze - Analyze food photo\n/supplements - Supplement advice\n/progress - Weekly report\n/help - All commands' }}",
+        "additionalFields": {}
       },
       "id": "send-profile",
       "name": "Send Profile Summary",
