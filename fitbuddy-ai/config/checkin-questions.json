@@ -1,0 +1,47 @@
+{
+  "questions": [
+    {
+      "id": "sleep_hours",
+      "text": "😴 How many hours did you sleep last night?",
+      "type": "number",
+      "min": 0,
+      "max": 24
+    },
+    {
+      "id": "energy_level",
+      "text": "⚡ Energy level today? (1 = exhausted, 10 = fantastic)",
+      "type": "number",
+      "min": 1,
+      "max": 10
+    },
+    {
+      "id": "mood",
+      "text": "💭 How's your mood? (great / good / okay / low)",
+      "type": "text"
+    },
+    {
+      "id": "food_description",
+      "text": "🍽️ Describe what you ate yesterday — or send a food photo!",
+      "type": "text_or_photo"
+    },
+    {
+      "id": "workout_description",
+      "text": "🏋️ Did you work out? If yes, briefly describe it. If no, just say 'rest day'.",
+      "type": "text"
+    },
+    {
+      "id": "steps",
+      "text": "👟 Roughly how many steps did you take? (check your phone if unsure)",
+      "type": "number",
+      "min": 0,
+      "max": 100000
+    },
+    {
+      "id": "water_ml",
+      "text": "💧 How many glasses of water? (1 glass ≈ 250ml)",
+      "type": "number",
+      "min": 0,
+      "max": 40
+    }
+  ]
+}

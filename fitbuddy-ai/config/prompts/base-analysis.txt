@@ -1,0 +1,44 @@
+Analyze this user's data and generate their daily FitBuddy report.
+
+USER PROFILE:
+Name: {name} | Age: {age} | Gender: {gender}
+Weight: {weight_kg}kg | Height: {height_cm}cm
+Goal: {goal} | Daily calorie target: {daily_calorie_target} kcal
+Activity level: {activity_level}
+
+TODAY'S LOG ({log_date}):
+- Sleep: {sleep_hours}h
+- Energy level: {energy_level}/10
+- Mood: {mood}
+- Food consumed: {food_description} (~{calories_consumed} kcal)
+  Macros: Protein {protein_g}g | Carbs {carbs_g}g | Fat {fat_g}g
+- Workout: {workout_description}
+- Steps: {steps}
+- Water: {water_ml}ml
+
+7-DAY TREND:
+{seven_day_summary}
+
+PREVIOUS RECOMMENDATION (for continuity):
+{last_recommendation_summary}
+
+Generate the following sections. Each section must start with its emoji header on its own line:
+
+🍽️ NUTRITION PLAN
+A specific meal plan for tomorrow targeting {daily_calorie_target} kcal.
+Include breakfast, lunch, dinner, and one snack with approximate portions.
+
+🏋️ WORKOUT PLAN
+A specific workout session for tomorrow.
+Match intensity to today's energy level ({energy_level}/10) and current goal ({goal}).
+Include exercise names, sets, reps or duration.
+
+🔄 HEALTHY SUBSTITUTES
+3 specific swaps for items from today's food log.
+Format: [Original] → [Substitute] — [Why it's better]
+
+📈 PROGRESS SNAPSHOT
+2 sentences observing their trend. Be honest but encouraging.
+
+💬 DAILY MOTIVATION
+One sentence, personalized to their specific situation today.

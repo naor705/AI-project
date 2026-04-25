@@ -1,0 +1,321 @@
+{
+  "name": "Feature — Food Image Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "food-image-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "webhookId": "fitbuddy-food-image"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.body.telegram_id }}",
+        "text": "🔍 Analyzing your food photo...\n\nThis takes a few seconds. 📸",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-analyzing",
+      "name": "Send Analyzing Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/getFile?file_id={{ $('Webhook Trigger').item.json.body.file_id }}",
+        "options": {}
+      },
+      "id": "node-get-file",
+      "name": "Get File Path from Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot{{ $env.TELEGRAM_BOT_TOKEN }}/{{ $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": { "responseFormat": "file" }
+          }
+        }
+      },
+      "id": "node-download-image",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Analyze this food image. Respond ONLY with valid JSON — no markdown, no explanation, no code blocks:\n{\n  \"foods\": [\"item1\", \"item2\"],\n  \"estimated_calories\": 450,\n  \"protein_g\": 35,\n  \"carbs_g\": 40,\n  \"fat_g\": 12,\n  \"confidence\": \"high\",\n  \"health_score\": 7,\n  \"notes\": \"One sentence about nutritional quality\"\n}"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": { "url": "={{ 'data:image/jpeg;base64,' + $binary.data.toString('base64') }}" }
+                }
+              ]
+            }
+          ]
+        },
+        "options": { "temperature": 0.3, "maxTokens": 400 }
+      },
+      "id": "node-openai-vision",
+      "name": "GPT-4o Vision Analysis",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safe JSON parse of GPT-4o vision response\nconst rawContent = $json.message?.content || $json.choices?.[0]?.message?.content || '';\n\nlet parsed;\ntry {\n  // Strip markdown code blocks if present\n  const cleaned = rawContent.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  return [{ json: {\n    parseError: true,\n    errorMsg: `Could not parse AI response: ${e.message}`,\n    rawContent,\n    telegramId: $('Webhook Trigger').item.json.body.telegram_id,\n    userId: $('Webhook Trigger').item.json.body.user_id\n  } }];\n}\n\n// Validate confidence field\nconst validConfidence = ['high', 'medium', 'low'];\nif (!validConfidence.includes(parsed.confidence)) {\n  parsed.confidence = 'medium';\n}\n\nreturn [{ json: {\n  parseError: false,\n  foods: parsed.foods || [],\n  estimatedCalories: parsed.estimated_calories || 0,\n  proteinG: parsed.protein_g || 0,\n  carbsG: parsed.carbs_g || 0,\n  fatG: parsed.fat_g || 0,\n  confidence: parsed.confidence,\n  healthScore: parsed.health_score || 5,\n  notes: parsed.notes || '',\n  telegramId: $('Webhook Trigger').item.json.body.telegram_id,\n  userId: $('Webhook Trigger').item.json.body.user_id,\n  fileId: $('Webhook Trigger').item.json.body.file_id\n} }];"
+      },
+      "id": "node-parse-vision",
+      "name": "Parse Vision Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.parseError }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-parse-error",
+      "name": "Parse Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO food_analyses\n  (user_id, analyzed_at, food_items, estimated_calories, estimated_macros,\n   confidence, raw_ai_response, source)\nVALUES ($1, now(), $2::jsonb, $3, $4::jsonb, $5, $6, 'telegram_photo')\nRETURNING id",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $json.userId,\n  JSON.stringify($json.foods),\n  $json.estimatedCalories,\n  JSON.stringify({ protein_g: $json.proteinG, carbs_g: $json.carbsG, fat_g: $json.fatG }),\n  $json.confidence,\n  $json.notes\n].join(',') }}"
+        }
+      },
+      "id": "node-save-analysis",
+      "name": "Save Food Analysis",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1500, 200],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE daily_logs\nSET calories_consumed = COALESCE(calories_consumed, 0) + $1,\n    protein_g = COALESCE(protein_g, 0) + $2,\n    carbs_g = COALESCE(carbs_g, 0) + $3,\n    fat_g = COALESCE(fat_g, 0) + $4\nWHERE user_id = $5 AND log_date = CURRENT_DATE\nRETURNING calories_consumed, protein_g, carbs_g, fat_g",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $('Parse Vision Response').item.json.estimatedCalories,\n  $('Parse Vision Response').item.json.proteinG,\n  $('Parse Vision Response').item.json.carbsG,\n  $('Parse Vision Response').item.json.fatG,\n  $('Parse Vision Response').item.json.userId\n].join(',') }}"
+        }
+      },
+      "id": "node-update-daily-log",
+      "name": "Update Daily Log Macros",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1700, 200],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO feature_events (user_id, feature_id, event_type, payload)\nVALUES ($1, 'food_image_analysis', 'food_analyzed', $2::jsonb)",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $('Parse Vision Response').item.json.userId,\n  JSON.stringify({\n    calories: $('Parse Vision Response').item.json.estimatedCalories,\n    confidence: $('Parse Vision Response').item.json.confidence,\n    foods: $('Parse Vision Response').item.json.foods\n  })\n].join(',') }}"
+        }
+      },
+      "id": "node-log-event",
+      "name": "Log Feature Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1900, 200],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the analysis result message\nconst analysis = $('Parse Vision Response').item.json;\nconst updatedLog = $('Update Daily Log Macros').item.json;\nconst user = await $postgres.query(\n  'SELECT daily_calorie_target FROM users WHERE id = $1',\n  [analysis.userId]\n);\nconst target = user.rows[0]?.daily_calorie_target || 2000;\nconst totalToday = updatedLog.calories_consumed || analysis.estimatedCalories;\nconst remaining = target - totalToday;\nconst remainingText = remaining > 0\n  ? `🟢 ${remaining} kcal remaining today`\n  : `🔴 ${Math.abs(remaining)} kcal over target today`;\n\nconst healthStars = '⭐'.repeat(Math.min(Math.round(analysis.healthScore / 2), 5));\n\nconst foodList = (analysis.foods || []).map(f => `  • ${f}`).join('\\n') || '  • Unknown items';\n\nconst message = `📸 <b>Food Analysis Result</b>\\n\\n` +\n  `<b>Identified foods:</b>\\n${foodList}\\n\\n` +\n  `<b>Estimated nutrition:</b>\\n` +\n  `🔥 Calories: <b>${analysis.estimatedCalories} kcal</b>\\n` +\n  `🥩 Protein: ${analysis.proteinG}g | 🌾 Carbs: ${analysis.carbsG}g | 🥑 Fat: ${analysis.fatG}g\\n\\n` +\n  `💡 ${analysis.notes}\\n\\n` +\n  `📊 <b>Today's running total:</b> ${totalToday} kcal\\n` +\n  `${remainingText}\\n\\n` +\n  `Confidence: ${healthStars} (${analysis.confidence})`;\n\nreturn [{ json: { message, telegramId: analysis.telegramId, isLowConfidence: analysis.confidence === 'low' } }];"
+      },
+      "id": "node-build-result",
+      "name": "Build Result Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2100, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramId }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-result",
+      "name": "Send Analysis Result",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2300, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isLowConfidence }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-low-confidence",
+      "name": "Low Confidence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2500, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parse Vision Response').item.json.telegramId }}",
+        "text": "📸 <i>The photo was a bit unclear — the estimate may be off. For best results, take photos in good lighting with the food clearly visible on a flat surface.</i>",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-low-confidence-msg",
+      "name": "Low Confidence Warning",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2700, 150],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parse Vision Response').item.json.telegramId }}",
+        "text": "⚠️ I had trouble reading that photo. Please try again with a clearer image.",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-parse-error-msg",
+      "name": "Parse Error Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1500, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Send Analyzing Message", "type": "main", "index": 0 }]]
+    },
+    "Send Analyzing Message": {
+      "main": [[{ "node": "Get File Path from Telegram", "type": "main", "index": 0 }]]
+    },
+    "Get File Path from Telegram": {
+      "main": [[{ "node": "Download Image", "type": "main", "index": 0 }]]
+    },
+    "Download Image": {
+      "main": [[{ "node": "GPT-4o Vision Analysis", "type": "main", "index": 0 }]]
+    },
+    "GPT-4o Vision Analysis": {
+      "main": [[{ "node": "Parse Vision Response", "type": "main", "index": 0 }]]
+    },
+    "Parse Vision Response": {
+      "main": [[{ "node": "Parse Error?", "type": "main", "index": 0 }]]
+    },
+    "Parse Error?": {
+      "main": [
+        [{ "node": "Parse Error Message", "type": "main", "index": 0 }],
+        [{ "node": "Save Food Analysis", "type": "main", "index": 0 }]
+      ]
+    },
+    "Save Food Analysis": {
+      "main": [[{ "node": "Update Daily Log Macros", "type": "main", "index": 0 }]]
+    },
+    "Update Daily Log Macros": {
+      "main": [[{ "node": "Log Feature Event", "type": "main", "index": 0 }]]
+    },
+    "Log Feature Event": {
+      "main": [[{ "node": "Build Result Message", "type": "main", "index": 0 }]]
+    },
+    "Build Result Message": {
+      "main": [[{ "node": "Send Analysis Result", "type": "main", "index": 0 }]]
+    },
+    "Send Analysis Result": {
+      "main": [[{ "node": "Low Confidence?", "type": "main", "index": 0 }]]
+    },
+    "Low Confidence?": {
+      "main": [
+        [{ "node": "Low Confidence Warning", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "feature-food-image-v1",
+  "id": "7",
+  "meta": { "instanceId": "fitbuddy" }
+}

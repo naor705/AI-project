@@ -1,0 +1,322 @@
+{
+  "name": "06 — Weekly Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 9 * * 0" }]
+        }
+      },
+      "id": "node-schedule-trigger",
+      "name": "Sunday 9AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [100, 250]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "weekly-report",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-manual-trigger",
+      "name": "Manual Trigger (/progress)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 400],
+      "webhookId": "fitbuddy-weekly-report"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, telegram_id, first_name, daily_calorie_target, goal\nFROM users\nWHERE onboarding_complete = true",
+        "additionalFields": {}
+      },
+      "id": "node-get-users",
+      "name": "Get All Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [350, 320],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "node-per-user",
+      "name": "Per User",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [550, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_date, calories_consumed, protein_g, carbs_g, fat_g,\n       sleep_hours, energy_level, mood, workout_done, steps, water_ml\nFROM daily_logs\nWHERE user_id = $1\n  AND log_date >= CURRENT_DATE - INTERVAL '7 days'\nORDER BY log_date DESC",
+        "additionalFields": {
+          "queryParams": "={{ $json.id }}"
+        }
+      },
+      "id": "node-get-7day-logs",
+      "name": "Get 7-Day Logs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [750, 250],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT feature_id, event_type, payload, created_at\nFROM feature_events\nWHERE user_id = $1\n  AND created_at >= CURRENT_DATE - INTERVAL '7 days'\nORDER BY created_at DESC\nLIMIT 20",
+        "additionalFields": {
+          "queryParams": "={{ $('Per User').item.json.id }}"
+        }
+      },
+      "id": "node-get-events",
+      "name": "Get Feature Events",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [750, 400],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compute weekly statistics\nconst user = $('Per User').item.json;\nconst logs = $('Get 7-Day Logs').all().map(i => i.json);\nconst events = $('Get Feature Events').all().map(i => i.json);\n\nif (logs.length === 0) {\n  return [{ json: { skip: true, userId: user.id, telegramId: user.telegram_id } }];\n}\n\n// Core stats\nconst daysLogged = logs.length;\nconst avgCalories = Math.round(logs.reduce((s, d) => s + (d.calories_consumed || 0), 0) / daysLogged);\nconst avgSleep = (logs.reduce((s, d) => s + (parseFloat(d.sleep_hours) || 0), 0) / daysLogged).toFixed(1);\nconst avgEnergy = (logs.reduce((s, d) => s + (d.energy_level || 0), 0) / daysLogged).toFixed(1);\nconst avgSteps = Math.round(logs.reduce((s, d) => s + (d.steps || 0), 0) / daysLogged);\nconst workoutDays = logs.filter(d => d.workout_done).length;\nconst calorieTarget = user.daily_calorie_target || 2000;\nconst onTargetDays = logs.filter(d => {\n  const cal = d.calories_consumed || 0;\n  return cal >= calorieTarget * 0.85 && cal <= calorieTarget * 1.15;\n}).length;\nconst adherencePct = Math.round((onTargetDays / daysLogged) * 100);\n\n// Feature activity summary\nconst featureActivity = {};\nevents.forEach(e => {\n  if (!featureActivity[e.feature_id]) featureActivity[e.feature_id] = 0;\n  featureActivity[e.feature_id]++;\n});\n\n// Chart data arrays for QuickChart\nconst chartLabels = logs.map(d => d.log_date).reverse();\nconst calorieData = logs.map(d => d.calories_consumed || 0).reverse();\nconst targetData = logs.map(() => calorieTarget).reverse();\nconst sleepData = logs.map(d => parseFloat(d.sleep_hours) || 0).reverse();\nconst energyData = logs.map(d => d.energy_level || 0).reverse();\n\n// Calorie chart config\nconst calorieChartConfig = {\n  type: 'bar',\n  data: {\n    labels: chartLabels,\n    datasets: [\n      { label: 'Calories', data: calorieData, backgroundColor: 'rgba(99,179,237,0.8)', borderColor: 'rgba(66,153,225,1)', borderWidth: 1 },\n      { label: 'Target', data: targetData, type: 'line', borderColor: 'rgba(245,101,101,0.8)', borderWidth: 2, fill: false, pointRadius: 0 }\n    ]\n  },\n  options: {\n    title: { display: true, text: 'Daily Calories vs Target' },\n    scales: { yAxes: [{ ticks: { beginAtZero: true } }] }\n  }\n};\n\n// Sleep/Energy chart config\nconst sleepEnergyChartConfig = {\n  type: 'line',\n  data: {\n    labels: chartLabels,\n    datasets: [\n      { label: 'Sleep (hrs)', data: sleepData, borderColor: 'rgba(154,117,234,0.9)', borderWidth: 2, fill: false },\n      { label: 'Energy (/10)', data: energyData, borderColor: 'rgba(72,187,120,0.9)', borderWidth: 2, fill: false }\n    ]\n  },\n  options: { title: { display: true, text: 'Sleep & Energy Trend' } }\n};\n\nreturn [{ json: {\n  skip: false,\n  userId: user.id,\n  telegramId: user.telegram_id,\n  firstName: user.first_name,\n  goal: user.goal,\n  daysLogged,\n  avgCalories,\n  avgSleep,\n  avgEnergy,\n  avgSteps,\n  workoutDays,\n  adherencePct,\n  featureActivity,\n  calorieChartConfig: encodeURIComponent(JSON.stringify(calorieChartConfig)),\n  sleepEnergyChartConfig: encodeURIComponent(JSON.stringify(sleepEnergyChartConfig))\n} }];"
+      },
+      "id": "node-compute-stats",
+      "name": "Compute Weekly Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [950, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-skip",
+      "name": "Has Data?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1150, 320]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are FitBuddy AI, a warm, encouraging fitness coach. Generate a 3-4 sentence weekly summary that highlights wins, acknowledges struggles, and ends with motivation. Be specific to the numbers provided. Format for Telegram HTML."
+            },
+            {
+              "role": "user",
+              "content": "={{ `Generate a weekly summary for ${$json.firstName}:\\n- Days logged: ${$json.daysLogged}/7\\n- Avg calories: ${$json.avgCalories} kcal (target: ${$('Per User').item.json.daily_calorie_target})\\n- Calorie adherence: ${$json.adherencePct}%\\n- Avg sleep: ${$json.avgSleep}h\\n- Avg energy: ${$json.avgEnergy}/10\\n- Avg daily steps: ${$json.avgSteps}\\n- Workout days: ${$json.workoutDays}/7\\n- Goal: ${$json.goal}` }}"
+            }
+          ]
+        },
+        "options": { "maxTokens": 300 }
+      },
+      "id": "node-ai-narrative",
+      "name": "Generate AI Narrative",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1350, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://quickchart.io/chart?c={{ $('Compute Weekly Stats').item.json.calorieChartConfig }}&width=600&height=300&backgroundColor=white",
+        "options": { "response": { "response": { "responseFormat": "file" } } }
+      },
+      "id": "node-calorie-chart",
+      "name": "Fetch Calorie Chart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1350, 350]
+    },
+    {
+      "parameters": {
+        "url": "=https://quickchart.io/chart?c={{ $('Compute Weekly Stats').item.json.sleepEnergyChartConfig }}&width=600&height=300&backgroundColor=white",
+        "options": { "response": { "response": { "responseFormat": "file" } } }
+      },
+      "id": "node-sleep-chart",
+      "name": "Fetch Sleep/Energy Chart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1350, 500]
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('Compute Weekly Stats').item.json.telegramId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "📊 Your weekly calorie vs. target chart"
+        }
+      },
+      "id": "node-send-calorie-chart",
+      "name": "Send Calorie Chart",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1550, 350],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('Compute Weekly Stats').item.json.telegramId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "😴⚡ Sleep & energy trend this week"
+        }
+      },
+      "id": "node-send-sleep-chart",
+      "name": "Send Sleep Chart",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1550, 500],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Compute Weekly Stats').item.json.telegramId }}",
+        "text": "={{ `📅 <b>Weekly Report — ${$('Compute Weekly Stats').item.json.firstName}</b>\\n\\n` +\n  `📊 <b>This Week's Stats:</b>\\n` +\n  `📝 Days logged: ${$('Compute Weekly Stats').item.json.daysLogged}/7\\n` +\n  `🔥 Avg calories: ${$('Compute Weekly Stats').item.json.avgCalories} kcal\\n` +\n  `🎯 Calorie adherence: ${$('Compute Weekly Stats').item.json.adherencePct}%\\n` +\n  `😴 Avg sleep: ${$('Compute Weekly Stats').item.json.avgSleep}h\\n` +\n  `⚡ Avg energy: ${$('Compute Weekly Stats').item.json.avgEnergy}/10\\n` +\n  `👟 Avg steps: ${$('Compute Weekly Stats').item.json.avgSteps.toLocaleString()}\\n` +\n  `🏋️ Workout days: ${$('Compute Weekly Stats').item.json.workoutDays}/7\\n\\n` +\n  `🤖 <b>AI Summary:</b>\\n` +\n  ($('Generate AI Narrative').item.json.message?.content || '') }}",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-summary",
+      "name": "Send Weekly Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1750, 350],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO feature_events (user_id, feature_id, event_type, payload)\nVALUES ($1, 'core', 'weekly_report_sent', $2::jsonb)",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $('Compute Weekly Stats').item.json.userId,\n  JSON.stringify({\n    days_logged: $('Compute Weekly Stats').item.json.daysLogged,\n    avg_calories: $('Compute Weekly Stats').item.json.avgCalories,\n    workout_days: $('Compute Weekly Stats').item.json.workoutDays\n  })\n].join(',') }}"
+        }
+      },
+      "id": "node-log-event",
+      "name": "Log Report Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1950, 350],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Sunday 9AM Trigger": {
+      "main": [[{ "node": "Get All Active Users", "type": "main", "index": 0 }]]
+    },
+    "Manual Trigger (/progress)": {
+      "main": [[{ "node": "Get All Active Users", "type": "main", "index": 0 }]]
+    },
+    "Get All Active Users": {
+      "main": [[{ "node": "Per User", "type": "main", "index": 0 }]]
+    },
+    "Per User": {
+      "main": [
+        [{ "node": "Get 7-Day Logs", "type": "main", "index": 0 }],
+        [{ "node": "Get Feature Events", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get 7-Day Logs": {
+      "main": [[{ "node": "Compute Weekly Stats", "type": "main", "index": 0 }]]
+    },
+    "Get Feature Events": {
+      "main": [[{ "node": "Compute Weekly Stats", "type": "main", "index": 0 }]]
+    },
+    "Compute Weekly Stats": {
+      "main": [[{ "node": "Has Data?", "type": "main", "index": 0 }]]
+    },
+    "Has Data?": {
+      "main": [
+        [],
+        [
+          { "node": "Generate AI Narrative", "type": "main", "index": 0 },
+          { "node": "Fetch Calorie Chart", "type": "main", "index": 0 },
+          { "node": "Fetch Sleep/Energy Chart", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Calorie Chart": {
+      "main": [[{ "node": "Send Calorie Chart", "type": "main", "index": 0 }]]
+    },
+    "Fetch Sleep/Energy Chart": {
+      "main": [[{ "node": "Send Sleep Chart", "type": "main", "index": 0 }]]
+    },
+    "Send Calorie Chart": {
+      "main": [[{ "node": "Send Weekly Summary", "type": "main", "index": 0 }]]
+    },
+    "Generate AI Narrative": {
+      "main": [[{ "node": "Send Weekly Summary", "type": "main", "index": 0 }]]
+    },
+    "Send Weekly Summary": {
+      "main": [[{ "node": "Log Report Event", "type": "main", "index": 0 }]]
+    },
+    "Log Report Event": {
+      "main": [[{ "node": "Per User", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "06-weekly-report-v1",
+  "id": "6",
+  "meta": { "instanceId": "fitbuddy" }
+}

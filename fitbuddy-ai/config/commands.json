@@ -1,0 +1,58 @@
+{
+  "commands": [
+    {
+      "command": "/start",
+      "description": "Begin onboarding or restart",
+      "workflow": "core/01_onboarding.json",
+      "core": true
+    },
+    {
+      "command": "/checkin",
+      "description": "Start your daily check-in manually",
+      "workflow": "core/02_daily_checkin.json",
+      "core": true
+    },
+    {
+      "command": "/progress",
+      "description": "See your weekly progress dashboard",
+      "workflow": "core/06_weekly_report.json",
+      "core": true
+    },
+    {
+      "command": "/help",
+      "description": "List all available commands",
+      "workflow": "core/04_command_router.json",
+      "core": true
+    },
+    {
+      "command": "/analyze",
+      "description": "Analyze a food photo",
+      "workflow": "features/food_image_analysis.json",
+      "feature_id": "food_image_analysis"
+    },
+    {
+      "command": "/supplements",
+      "description": "Get supplement recommendations",
+      "workflow": "features/supplement_advisor.json",
+      "feature_id": "supplement_advisor"
+    },
+    {
+      "command": "/restaurants",
+      "description": "Find healthy restaurants near you",
+      "workflow": "features/restaurant_finder.json",
+      "feature_id": "restaurant_finder"
+    },
+    {
+      "command": "/challenges",
+      "description": "View and join weekly challenges",
+      "workflow": "features/challenge_system.json",
+      "feature_id": "challenge_system"
+    },
+    {
+      "command": "/mindset",
+      "description": "Get your daily mindset coaching",
+      "workflow": "features/mindset_coach.json",
+      "feature_id": "mindset_coach"
+    }
+  ]
+}

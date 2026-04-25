@@ -1,0 +1,356 @@
+{
+  "name": "02 — Daily Check-in",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
+        }
+      },
+      "id": "node-schedule-trigger",
+      "name": "Schedule Trigger (8AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "checkin-manual",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-manual-trigger",
+      "name": "Manual Trigger (/checkin)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 450],
+      "webhookId": "fitbuddy-checkin-manual"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, telegram_id, first_name, daily_calorie_target FROM users WHERE onboarding_complete = true",
+        "additionalFields": {}
+      },
+      "id": "node-get-users",
+      "name": "Get All Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [350, 370],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "node-split-users",
+      "name": "Per User",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [550, 370]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM daily_logs WHERE user_id = $1 AND log_date = CURRENT_DATE",
+        "additionalFields": {
+          "queryParams": "={{ $json.id }}"
+        }
+      },
+      "id": "node-check-today-log",
+      "name": "Already Checked In Today?",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [750, 370],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-already-done",
+      "name": "Already Done Today?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [950, 370]
+    },
+    {
+      "parameters": {
+        "url": "file:///home/node/fitbuddy/config/checkin-questions.json",
+        "options": {}
+      },
+      "id": "node-read-questions",
+      "name": "Read Check-in Questions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1150, 450]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO conversation_state (user_id, flow_id, step, context)\nVALUES ($1, 'checkin', 'q_0', '{\"question_index\": 0, \"answers\": {}}')\nON CONFLICT (user_id, flow_id) DO UPDATE\n  SET step = 'q_0', context = '{\"question_index\": 0, \"answers\": {}}'::jsonb, updated_at = now()\nRETURNING id",
+        "additionalFields": {
+          "queryParams": "={{ $('Per User').item.json.id }}"
+        }
+      },
+      "id": "node-init-checkin-state",
+      "name": "Init Check-in State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1350, 450],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Per User').item.json.telegram_id }}",
+        "text": "🌅 <b>Good morning, {{ $('Per User').item.json.first_name }}!</b>\n\nTime for your daily check-in. I have 7 quick questions — takes about 2 minutes.\n\nLet's start! 👇",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-intro",
+      "name": "Send Check-in Intro",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1550, 450],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Send the first question from the questions array\nconst questionsRaw = $('Read Check-in Questions').item.json;\nconst questions = questionsRaw.questions || [];\nconst firstQ = questions[0];\n\nreturn [{ json: {\n  questionText: firstQ.text,\n  questionId: firstQ.id,\n  questionType: firstQ.type,\n  questionIndex: 0,\n  totalQuestions: questions.length,\n  telegramId: $('Per User').item.json.telegram_id,\n  userId: $('Per User').item.json.id\n} }];"
+      },
+      "id": "node-prep-first-question",
+      "name": "Prep First Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 450]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramId }}",
+        "text": "={{ `[1/${$json.totalQuestions}] ${$json.questionText}` }}",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-question",
+      "name": "Send Question",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1950, 450],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "webhookSuffix": "={{ `checkin-answer-${$('Per User').item.json.telegram_id}` }}",
+        "options": { "responseData": "noData" }
+      },
+      "id": "node-wait-answer",
+      "name": "Wait for Answer",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [2150, 450],
+      "webhookId": "fitbuddy-checkin-wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process the incoming answer, validate it, advance to next question\nconst message = $json.body?.message || $json.message || {};\nconst questionsRaw = $('Read Check-in Questions').item.json;\nconst questions = questionsRaw.questions || [];\n\n// Get current conv state\nconst convStateResult = await $postgres.query(\n  'SELECT step, context FROM conversation_state WHERE user_id = $1 AND flow_id = $2',\n  [$('Per User').item.json.id, 'checkin']\n);\nconst convState = convStateResult.rows[0];\nlet context = typeof convState.context === 'string' ? JSON.parse(convState.context) : convState.context;\nconst currentIndex = context.question_index || 0;\nconst currentQ = questions[currentIndex];\n\n// Extract answer\nlet answer = '';\nlet hasPhoto = false;\nif (message.photo && message.photo.length > 0) {\n  hasPhoto = true;\n  answer = '[photo]';\n  context.answers.food_photo_file_id = message.photo[message.photo.length - 1].file_id;\n} else {\n  answer = (message.text || '').trim();\n}\n\n// Validate\nif (currentQ.type === 'number') {\n  const num = parseFloat(answer);\n  if (isNaN(num) || (currentQ.min !== undefined && num < currentQ.min) || (currentQ.max !== undefined && num > currentQ.max)) {\n    return [{ json: { valid: false, errorMsg: `Please enter a number between ${currentQ.min} and ${currentQ.max}.`, telegramId: message.from.id } }];\n  }\n  // Convert water glasses to ml\n  if (currentQ.id === 'water_ml') {\n    context.answers[currentQ.id] = num * 250;\n  } else {\n    context.answers[currentQ.id] = num;\n  }\n} else {\n  context.answers[currentQ.id] = answer || 'Not provided';\n}\n\nconst nextIndex = currentIndex + 1;\nconst isComplete = nextIndex >= questions.length;\ncontext.question_index = nextIndex;\n\nreturn [{ json: {\n  valid: true,\n  isComplete,\n  nextIndex,\n  nextQuestion: isComplete ? null : questions[nextIndex],\n  totalQuestions: questions.length,\n  answers: context.answers,\n  hasPhoto,\n  userId: $('Per User').item.json.id,\n  telegramId: message.from.id || $('Per User').item.json.telegram_id,\n  updatedContext: context\n} }];"
+      },
+      "id": "node-process-answer",
+      "name": "Process Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2350, 450]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isComplete }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-all-done",
+      "name": "All Questions Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2550, 450]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO daily_logs\n  (user_id, log_date, sleep_hours, energy_level, mood, food_description,\n   workout_done, workout_description, steps, water_ml)\nVALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9)\nON CONFLICT (user_id, log_date) DO UPDATE SET\n  sleep_hours = EXCLUDED.sleep_hours,\n  energy_level = EXCLUDED.energy_level,\n  mood = EXCLUDED.mood,\n  food_description = EXCLUDED.food_description,\n  workout_done = EXCLUDED.workout_done,\n  workout_description = EXCLUDED.workout_description,\n  steps = EXCLUDED.steps,\n  water_ml = EXCLUDED.water_ml\nRETURNING id",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $json.userId,\n  $json.answers.sleep_hours || 0,\n  $json.answers.energy_level || 5,\n  $json.answers.mood || 'okay',\n  $json.answers.food_description || 'Not provided',\n  ($json.answers.workout_description || '').toLowerCase() !== 'rest day',\n  $json.answers.workout_description || 'Rest day',\n  $json.answers.steps || 0,\n  $json.answers.water_ml || 0\n].join(',') }}"
+        }
+      },
+      "id": "node-insert-log",
+      "name": "Insert Daily Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2750, 350],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Process Answer').item.json.telegramId }}",
+        "text": "✅ <b>Check-in complete!</b>\n\n🤖 Generating your personalized plan for tomorrow...\n\nThis takes about 15 seconds. ⏳",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-confirm-checkin",
+      "name": "Confirm Check-in",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2950, 350],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": "3",
+        "options": {},
+        "workflowInputs": {
+          "values": [
+            { "name": "user_id", "value": "={{ $('Process Answer').item.json.userId }}" },
+            { "name": "log_date", "value": "={{ new Date().toISOString().split('T')[0] }}" },
+            { "name": "telegram_id", "value": "={{ $('Process Answer').item.json.telegramId }}" }
+          ]
+        }
+      },
+      "id": "node-trigger-ai",
+      "name": "Trigger AI Engine",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [3150, 350]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM conversation_state WHERE user_id = $1 AND flow_id = 'checkin'",
+        "additionalFields": {
+          "queryParams": "={{ $('Process Answer').item.json.userId }}"
+        }
+      },
+      "id": "node-cleanup-state",
+      "name": "Cleanup Conv State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [3350, 350],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (8AM)": {
+      "main": [[{ "node": "Get All Active Users", "type": "main", "index": 0 }]]
+    },
+    "Manual Trigger (/checkin)": {
+      "main": [[{ "node": "Get All Active Users", "type": "main", "index": 0 }]]
+    },
+    "Get All Active Users": {
+      "main": [[{ "node": "Per User", "type": "main", "index": 0 }]]
+    },
+    "Per User": {
+      "main": [[{ "node": "Already Checked In Today?", "type": "main", "index": 0 }]]
+    },
+    "Already Checked In Today?": {
+      "main": [[{ "node": "Already Done Today?", "type": "main", "index": 0 }]]
+    },
+    "Already Done Today?": {
+      "main": [
+        [],
+        [{ "node": "Read Check-in Questions", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Check-in Questions": {
+      "main": [[{ "node": "Init Check-in State", "type": "main", "index": 0 }]]
+    },
+    "Init Check-in State": {
+      "main": [[{ "node": "Send Check-in Intro", "type": "main", "index": 0 }]]
+    },
+    "Send Check-in Intro": {
+      "main": [[{ "node": "Prep First Question", "type": "main", "index": 0 }]]
+    },
+    "Prep First Question": {
+      "main": [[{ "node": "Send Question", "type": "main", "index": 0 }]]
+    },
+    "Send Question": {
+      "main": [[{ "node": "Wait for Answer", "type": "main", "index": 0 }]]
+    },
+    "Wait for Answer": {
+      "main": [[{ "node": "Process Answer", "type": "main", "index": 0 }]]
+    },
+    "Process Answer": {
+      "main": [[{ "node": "All Questions Done?", "type": "main", "index": 0 }]]
+    },
+    "All Questions Done?": {
+      "main": [
+        [{ "node": "Insert Daily Log", "type": "main", "index": 0 }],
+        [{ "node": "Send Question", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert Daily Log": {
+      "main": [[{ "node": "Confirm Check-in", "type": "main", "index": 0 }]]
+    },
+    "Confirm Check-in": {
+      "main": [[{ "node": "Trigger AI Engine", "type": "main", "index": 0 }]]
+    },
+    "Trigger AI Engine": {
+      "main": [[{ "node": "Cleanup Conv State", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "02-daily-checkin-v1",
+  "id": "2",
+  "meta": { "instanceId": "fitbuddy" }
+}

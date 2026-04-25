@@ -1,0 +1,44 @@
+{
+  "reminders": [
+    {
+      "id": "morning_water",
+      "cron": "0 8 * * *",
+      "type": "water",
+      "message": "💧 Good morning, {name}! Start your day with a big glass of water. Hydration = performance.",
+      "enabled": true,
+      "feature_id": null
+    },
+    {
+      "id": "midday_checkin",
+      "cron": "0 13 * * *",
+      "type": "meal",
+      "message": "🥗 Lunchtime check-in! Your daily target is {daily_calorie_target} kcal. Staying on track?",
+      "enabled": true,
+      "feature_id": null
+    },
+    {
+      "id": "afternoon_workout",
+      "cron": "0 18 * * *",
+      "type": "workout",
+      "message": "🏋️ Still time for a workout! Even 20 minutes makes a difference. You've got this, {name}.",
+      "enabled": true,
+      "feature_id": null
+    },
+    {
+      "id": "evening_winddown",
+      "cron": "0 21 * * *",
+      "type": "sleep",
+      "message": "🌙 Wind-down time. Aim for 7–9 hours tonight. Great sleep is where the progress happens.",
+      "enabled": true,
+      "feature_id": null
+    },
+    {
+      "id": "challenge_reminder",
+      "cron": "0 12 * * 1",
+      "type": "challenge",
+      "message": "🏆 New week, new challenge! Type /challenges to see this week's mission.",
+      "enabled": false,
+      "feature_id": "challenge_system"
+    }
+  ]
+}

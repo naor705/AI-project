@@ -1,0 +1,6 @@
+🍴 RESTAURANT & DINING ADVICE
+Based on the user's goal ({goal}) and today's macro targets:
+- Suggest what type of cuisine or dish category to prioritize when eating out
+- Provide 2–3 smart ordering tips that align with their calorie and macro targets
+- Flag common restaurant pitfalls to avoid (hidden calories, portion traps, etc.)
+- Give one rule of thumb for estimating restaurant meal macros on the fly

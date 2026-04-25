@@ -1,0 +1,303 @@
+{
+  "name": "Feature — Restaurant Finder",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "restaurant-finder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "webhookId": "fitbuddy-restaurant-finder"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, telegram_id, first_name, goal, daily_calorie_target\nFROM users\nWHERE telegram_id = $1",
+        "additionalFields": {
+          "queryParams": "={{ $json.body.telegram_id }}"
+        }
+      },
+      "id": "node-get-user",
+      "name": "Get User Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [300, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_id }}",
+        "text": "📍 <b>Restaurant Finder</b>\n\nTo find healthy restaurants near you, please share your location.\n\nTap the button below 👇",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"keyboard\":[[{\"text\":\"📍 Share my location\",\"request_location\":true}]],\"resize_keyboard\":true,\"one_time_keyboard\":true}"
+        }
+      },
+      "id": "node-request-location",
+      "name": "Request Location",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [500, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "webhookSuffix": "={{ `restaurant-location-${$('Get User Profile').item.json.telegram_id}` }}",
+        "options": { "responseData": "noData" }
+      },
+      "id": "node-wait-location",
+      "name": "Wait for Location",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [700, 300],
+      "webhookId": "fitbuddy-restaurant-wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract latitude and longitude from location message\nconst message = $json.body?.message || {};\nconst location = message.location;\n\nif (!location || !location.latitude || !location.longitude) {\n  return [{ json: {\n    locationError: true,\n    errorMsg: 'No location data received.',\n    telegramId: $('Get User Profile').item.json.telegram_id\n  } }];\n}\n\nreturn [{ json: {\n  locationError: false,\n  lat: location.latitude,\n  lon: location.longitude,\n  userId: $('Get User Profile').item.json.id,\n  telegramId: $('Get User Profile').item.json.telegram_id,\n  goal: $('Get User Profile').item.json.goal,\n  firstName: $('Get User Profile').item.json.first_name\n} }];"
+      },
+      "id": "node-extract-location",
+      "name": "Extract Location",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.locationError }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-location-error",
+      "name": "Location Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://maps.googleapis.com/maps/api/place/nearbysearch/json?location={{ $json.lat }},{{ $json.lon }}&radius=1500&type=restaurant&keyword=healthy+food&key={{ $env.GOOGLE_PLACES_API_KEY }}",
+        "options": {}
+      },
+      "id": "node-places-api",
+      "name": "Google Places API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter and format restaurant results\nconst placesData = $json;\nconst locData = $('Extract Location').item.json;\n\nconst results = (placesData.results || []);\nconst filtered = results\n  .filter(r => r.rating >= 4.0 && r.business_status === 'OPERATIONAL')\n  .slice(0, 5);\n\nif (filtered.length === 0) {\n  return [{ json: {\n    noResults: true,\n    telegramId: locData.telegramId,\n    lat: locData.lat,\n    lon: locData.lon\n  } }];\n}\n\nconst formatted = filtered.map(r => ({\n  name: r.name,\n  rating: r.rating,\n  address: r.vicinity,\n  placeId: r.place_id,\n  priceLevel: r.price_level,\n  openNow: r.opening_hours?.open_now\n}));\n\nreturn [{ json: {\n  noResults: false,\n  restaurants: formatted,\n  count: formatted.length,\n  telegramId: locData.telegramId,\n  userId: locData.userId,\n  goal: locData.goal,\n  firstName: locData.firstName,\n  lat: locData.lat,\n  lon: locData.lon\n} }];"
+      },
+      "id": "node-filter-results",
+      "name": "Filter & Format Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 200]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a fitness nutrition coach. For each restaurant listed, write exactly ONE sentence (max 15 words) explaining why it fits the user's fitness goal. Be specific and practical."
+            },
+            {
+              "role": "user",
+              "content": "={{ `User goal: ${$json.goal}. Restaurants:\\n${$json.restaurants.map((r, i) => `${i+1}. ${r.name}`).join('\\n')}\\n\\nFor each restaurant, write one sentence on why it suits the ${$json.goal} goal. Number your responses to match.` }}"
+            }
+          ]
+        },
+        "options": { "maxTokens": 300 }
+      },
+      "id": "node-ai-explanations",
+      "name": "Generate AI Explanations",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1700, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine restaurant data with AI explanations\nconst restaurants = $('Filter & Format Results').item.json.restaurants;\nconst explanationsText = $json.message?.content || $json.choices?.[0]?.message?.content || '';\nconst prevData = $('Filter & Format Results').item.json;\n\n// Parse explanations by line number\nconst explanationLines = explanationsText.split('\\n').filter(l => l.trim());\nconst explanations = {};\nexplanationLines.forEach(line => {\n  const match = line.match(/^(\\d+)[\\.:\\)]\\s*(.+)/);\n  if (match) {\n    explanations[parseInt(match[1]) - 1] = match[2].trim();\n  }\n});\n\nconst priceMap = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };\n\nconst messages = restaurants.map((r, i) => {\n  const openStatus = r.openNow === true ? '🟢 Open now' : r.openNow === false ? '🔴 Closed' : '';\n  const price = priceMap[r.priceLevel] || '';\n  const explanation = explanations[i] || 'A solid option for healthy eating.';\n  \n  return `🍴 <b>${r.name}</b>\\n` +\n    `⭐ ${r.rating} ${price} ${openStatus}\\n` +\n    `📍 ${r.address}\\n` +\n    `💡 ${explanation}`;\n});\n\nreturn [{ json: {\n  messageChunks: messages,\n  telegramId: prevData.telegramId,\n  userId: prevData.userId,\n  count: restaurants.length,\n  lat: prevData.lat,\n  lon: prevData.lon\n} }];"
+      },
+      "id": "node-build-messages",
+      "name": "Build Restaurant Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1900, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramId }}",
+        "text": "={{ `🍴 <b>Found ${$json.count} healthy restaurant${$json.count > 1 ? 's' : ''} near you:</b>\\n\\n` + $json.messageChunks.join('\\n\\n') }}",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-results",
+      "name": "Send Restaurant Results",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2100, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO restaurant_searches (user_id, latitude, longitude, results, result_count)\nVALUES ($1, $2, $3, $4::jsonb, $5)\nRETURNING id",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $('Build Restaurant Messages').item.json.userId,\n  $('Build Restaurant Messages').item.json.lat,\n  $('Build Restaurant Messages').item.json.lon,\n  JSON.stringify($('Filter & Format Results').item.json.restaurants),\n  $('Build Restaurant Messages').item.json.count\n].join(',') }}"
+        }
+      },
+      "id": "node-save-search",
+      "name": "Save Search",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2300, 200],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO feature_events (user_id, feature_id, event_type, payload)\nVALUES ($1, 'restaurant_finder', 'restaurants_found', $2::jsonb)",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $('Build Restaurant Messages').item.json.userId,\n  JSON.stringify({ count: $('Build Restaurant Messages').item.json.count })\n].join(',') }}"
+        }
+      },
+      "id": "node-log-event",
+      "name": "Log Feature Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2300, 350],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Extract Location').item.json.telegramId }}",
+        "text": "😕 I couldn't find any highly-rated healthy restaurants within 1.5km of your location.\n\nTry again later or in a different area!",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-no-results",
+      "name": "No Results Found",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1700, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramId }}",
+        "text": "❌ I didn't receive your location. Please tap /restaurants again and share your location when prompted.",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-location-error-msg",
+      "name": "Location Error Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Get User Profile", "type": "main", "index": 0 }]]
+    },
+    "Get User Profile": {
+      "main": [[{ "node": "Request Location", "type": "main", "index": 0 }]]
+    },
+    "Request Location": {
+      "main": [[{ "node": "Wait for Location", "type": "main", "index": 0 }]]
+    },
+    "Wait for Location": {
+      "main": [[{ "node": "Extract Location", "type": "main", "index": 0 }]]
+    },
+    "Extract Location": {
+      "main": [[{ "node": "Location Error?", "type": "main", "index": 0 }]]
+    },
+    "Location Error?": {
+      "main": [
+        [{ "node": "Location Error Message", "type": "main", "index": 0 }],
+        [{ "node": "Google Places API", "type": "main", "index": 0 }]
+      ]
+    },
+    "Google Places API": {
+      "main": [[{ "node": "Filter & Format Results", "type": "main", "index": 0 }]]
+    },
+    "Filter & Format Results": {
+      "main": [[{ "node": "Generate AI Explanations", "type": "main", "index": 0 }]]
+    },
+    "Generate AI Explanations": {
+      "main": [[{ "node": "Build Restaurant Messages", "type": "main", "index": 0 }]]
+    },
+    "Build Restaurant Messages": {
+      "main": [[{ "node": "Send Restaurant Results", "type": "main", "index": 0 }]]
+    },
+    "Send Restaurant Results": {
+      "main": [
+        [{ "node": "Save Search", "type": "main", "index": 0 }],
+        [{ "node": "Log Feature Event", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "feature-restaurant-v1",
+  "id": "9",
+  "meta": { "instanceId": "fitbuddy" }
+}

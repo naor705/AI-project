@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "features": [
+    {
+      "id": "food_image_analysis",
+      "name": "Food Image Analysis",
+      "enabled": true,
+      "workflow": "features/food_image_analysis.json",
+      "commands": ["/analyze"],
+      "prompt_fragment": "config/prompts/feature-food-image.txt",
+      "migrations": ["001_food_analysis.sql"],
+      "description": "Analyze food photos using GPT-4o vision and estimate macros"
+    },
+    {
+      "id": "supplement_advisor",
+      "name": "Supplement Advisor",
+      "enabled": true,
+      "workflow": "features/supplement_advisor.json",
+      "commands": ["/supplements"],
+      "prompt_fragment": "config/prompts/feature-supplements.txt",
+      "migrations": ["002_supplements.sql"],
+      "description": "Recommend supplements based on user goal and deficiencies"
+    },
+    {
+      "id": "restaurant_finder",
+      "name": "Restaurant & Product Finder",
+      "enabled": false,
+      "workflow": "features/restaurant_finder.json",
+      "commands": ["/restaurants", "/products"],
+      "prompt_fragment": "config/prompts/feature-restaurants.txt",
+      "migrations": ["003_restaurants.sql"],
+      "description": "Find healthy restaurants and products near the user"
+    },
+    {
+      "id": "challenge_system",
+      "name": "Weekly Challenges",
+      "enabled": false,
+      "workflow": "features/challenge_system.json",
+      "commands": ["/challenges", "/streak"],
+      "prompt_fragment": null,
+      "migrations": ["004_challenges.sql"],
+      "description": "Gamified weekly fitness challenges with streaks and badges"
+    },
+    {
+      "id": "mindset_coach",
+      "name": "Mindset Coach",
+      "enabled": false,
+      "workflow": "features/mindset_coach.json",
+      "commands": ["/mindset"],
+      "prompt_fragment": "config/prompts/feature-mindset.txt",
+      "migrations": ["005_mindset.sql"],
+      "description": "Daily affirmations, habit science, and mental resilience coaching"
+    }
+  ]
+}

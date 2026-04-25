@@ -1,0 +1,6 @@
+💊 SUPPLEMENT ADVICE
+Based on the user's goal ({goal}), recent food logs, and energy patterns:
+- Identify 1–2 potential nutritional gaps from their diet
+- Recommend 2–3 specific supplements with dosage and timing
+- Flag any supplements to avoid given their profile
+- Note: Always recommend consulting a healthcare provider before starting supplements

@@ -1,0 +1,515 @@
+{
+  "name": "01 — Onboarding",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "node-tg-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "webhookId": "fitbuddy-onboarding",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, telegram_id, first_name, onboarding_complete, onboarding_step FROM users WHERE telegram_id = $1",
+        "additionalFields": {
+          "queryParams": "={{ $json.message.from.id || $json.callback_query.from.id }}"
+        }
+      },
+      "id": "node-check-user",
+      "name": "Check Existing User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [300, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.onboarding_complete }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-complete",
+      "name": "Already Onboarded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id || $('Telegram Trigger').item.json.callback_query.from.id }}",
+        "text": "👋 Welcome back, <b>{{ $('Check Existing User').item.json.first_name }}</b>!\n\nType /help to see all available commands.",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-welcome-back",
+      "name": "Send Welcome Back",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [700, 150],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO users (telegram_id, username, first_name, onboarding_step)\nVALUES ($1, $2, $3, 'ask_name')\nON CONFLICT (telegram_id) DO UPDATE\n  SET username = EXCLUDED.username,\n      first_name = EXCLUDED.first_name,\n      updated_at = now()\nRETURNING id, telegram_id, first_name, onboarding_step",
+        "additionalFields": {
+          "queryParams": "={{ [$('Telegram Trigger').item.json.message.from.id, $('Telegram Trigger').item.json.message.from.username, $('Telegram Trigger').item.json.message.from.first_name].join(',') }}"
+        }
+      },
+      "id": "node-upsert-user",
+      "name": "Upsert User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [700, 350],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO conversation_state (user_id, flow_id, step, context)\nVALUES ($1, 'onboarding', 'ask_name', '{}')\nON CONFLICT (user_id, flow_id) DO UPDATE\n  SET updated_at = now()\nRETURNING id, step, context",
+        "additionalFields": {
+          "queryParams": "={{ $json.id }}"
+        }
+      },
+      "id": "node-get-conv-state",
+      "name": "Get or Create Conv State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [900, 350],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.step }}",
+        "rules": {
+          "rules": [
+            { "value2": "ask_name" },
+            { "value2": "ask_age" },
+            { "value2": "ask_gender" },
+            { "value2": "ask_height" },
+            { "value2": "ask_weight" },
+            { "value2": "ask_activity" },
+            { "value2": "ask_goal" },
+            { "value2": "complete" }
+          ]
+        }
+      },
+      "id": "node-switch-step",
+      "name": "Switch on Step",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1100, 350]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "👋 Welcome to <b>FitBuddy AI</b>!\n\nI'm your personal fitness and nutrition coach, powered by AI.\n\nLet's set up your profile — it takes about 2 minutes.\n\n<b>What's your first name?</b>",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-ask-name",
+      "name": "Ask Name",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "Great, <b>{{ $('Get or Create Conv State').item.json.context.name }}</b>! 💪\n\n<b>How old are you?</b>",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-ask-age",
+      "name": "Ask Age",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 220],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "<b>What's your gender?</b>",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"👨 Male\",\"callback_data\":\"gender_male\"},{\"text\":\"👩 Female\",\"callback_data\":\"gender_female\"},{\"text\":\"⚧ Other\",\"callback_data\":\"gender_other\"}]]}"
+        }
+      },
+      "id": "node-ask-gender",
+      "name": "Ask Gender",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 340],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "<b>What's your height in cm?</b>\n\nExample: <code>175</code>",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-ask-height",
+      "name": "Ask Height",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 460],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "<b>What's your current weight in kg?</b>\n\nExample: <code>78</code>",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-ask-weight",
+      "name": "Ask Weight",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 580],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "<b>How active are you on a typical day?</b>",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"🪑 Sedentary (desk job)\",\"callback_data\":\"activity_sedentary\"}],[{\"text\":\"🚶 Lightly active (light exercise 1-3x/week)\",\"callback_data\":\"activity_light\"}],[{\"text\":\"🏃 Moderately active (exercise 3-5x/week)\",\"callback_data\":\"activity_moderate\"}],[{\"text\":\"💪 Active (hard exercise 6-7x/week)\",\"callback_data\":\"activity_active\"}],[{\"text\":\"🔥 Very active (athlete / physical job)\",\"callback_data\":\"activity_very_active\"}]]}"
+        }
+      },
+      "id": "node-ask-activity",
+      "name": "Ask Activity",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 700],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "<b>What's your main fitness goal?</b>",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"🎯 Toning & Fat Loss\",\"callback_data\":\"goal_toning\"}],[{\"text\":\"💪 Build Muscle (Mass)\",\"callback_data\":\"goal_mass\"}],[{\"text\":\"⚖️ Maintenance\",\"callback_data\":\"goal_maintenance\"}]]}"
+        }
+      },
+      "id": "node-ask-goal",
+      "name": "Ask Goal",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1300, 820],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the incoming message to update conversation state\nconst triggerData = $('Telegram Trigger').item.json;\nconst convState = $('Get or Create Conv State').item.json;\nconst userRow = $('Upsert User').item.json;\n\nconst messageText = triggerData.message?.text || '';\nconst callbackData = triggerData.callback_query?.data || '';\nconst inputValue = messageText || callbackData;\n\nconst step = convState.step;\nlet context = {};\ntry { context = typeof convState.context === 'string' ? JSON.parse(convState.context) : (convState.context || {}); } catch(e) { context = {}; }\n\nconst stepMap = {\n  ask_name:     { key: 'name',           next: 'ask_age' },\n  ask_age:      { key: 'age',            next: 'ask_gender' },\n  ask_gender:   { key: 'gender',         next: 'ask_height', transform: v => v.replace('gender_', '') },\n  ask_height:   { key: 'height_cm',      next: 'ask_weight', transform: v => parseFloat(v) },\n  ask_weight:   { key: 'weight_kg',      next: 'ask_activity', transform: v => parseFloat(v) },\n  ask_activity: { key: 'activity_level', next: 'ask_goal', transform: v => v.replace('activity_', '') },\n  ask_goal:     { key: 'goal',           next: 'complete', transform: v => v.replace('goal_', '') }\n};\n\nconst currentStep = stepMap[step];\nif (currentStep) {\n  const rawValue = inputValue.trim();\n  const value = currentStep.transform ? currentStep.transform(rawValue) : rawValue;\n  context[currentStep.key] = value;\n}\n\n// Calculate TDEE if we have all data\nlet dailyCalorieTarget = null;\nif (context.weight_kg && context.height_cm && context.age && context.gender && context.activity_level && context.goal) {\n  // Mifflin-St Jeor BMR\n  let bmr;\n  if (context.gender === 'male') {\n    bmr = 10 * context.weight_kg + 6.25 * context.height_cm - 5 * context.age + 5;\n  } else {\n    bmr = 10 * context.weight_kg + 6.25 * context.height_cm - 5 * context.age - 161;\n  }\n  const multipliers = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };\n  const tdee = bmr * (multipliers[context.activity_level] || 1.2);\n  const goalOffset = { toning: -400, mass: 300, maintenance: 0 };\n  dailyCalorieTarget = Math.round(tdee + (goalOffset[context.goal] || 0));\n  context.daily_calorie_target = dailyCalorieTarget;\n}\n\nconst nextStep = currentStep ? currentStep.next : step;\n\nreturn [{ json: {\n  userId: userRow.id,\n  telegramId: triggerData.message?.from.id || triggerData.callback_query?.from.id,\n  nextStep,\n  context,\n  dailyCalorieTarget,\n  isComplete: nextStep === 'complete'\n} }];"
+      },
+      "id": "node-process-response",
+      "name": "Process Response & Advance Step",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversation_state\nSET step = $1, context = $2::jsonb, updated_at = now()\nWHERE user_id = $3 AND flow_id = 'onboarding'",
+        "additionalFields": {
+          "queryParams": "={{ [$json.nextStep, JSON.stringify($json.context), $json.userId].join(',') }}"
+        }
+      },
+      "id": "node-update-conv-state",
+      "name": "Update Conv State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1700, 500],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $('Process Response & Advance Step').item.json.isComplete }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-complete-flow",
+      "name": "Onboarding Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1900, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE users\nSET first_name = $1, age = $2, gender = $3, height_cm = $4, weight_kg = $5,\n    activity_level = $6, goal = $7, daily_calorie_target = $8,\n    onboarding_complete = true, updated_at = now()\nWHERE id = $9\nRETURNING first_name, age, gender, height_cm, weight_kg, activity_level, goal, daily_calorie_target",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $('Process Response & Advance Step').item.json.context.name,\n  $('Process Response & Advance Step').item.json.context.age,\n  $('Process Response & Advance Step').item.json.context.gender,\n  $('Process Response & Advance Step').item.json.context.height_cm,\n  $('Process Response & Advance Step').item.json.context.weight_kg,\n  $('Process Response & Advance Step').item.json.context.activity_level,\n  $('Process Response & Advance Step').item.json.context.goal,\n  $('Process Response & Advance Step').item.json.context.daily_calorie_target,\n  $('Process Response & Advance Step').item.json.userId\n].join(',') }}"
+        }
+      },
+      "id": "node-save-profile",
+      "name": "Save User Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2100, 400],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM conversation_state WHERE user_id = $1 AND flow_id = 'onboarding'",
+        "additionalFields": {
+          "queryParams": "={{ $('Process Response & Advance Step').item.json.userId }}"
+        }
+      },
+      "id": "node-delete-conv-state",
+      "name": "Delete Conv State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2300, 400],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Process Response & Advance Step').item.json.telegramId }}",
+        "text": "🎉 <b>Profile complete!</b>\n\n<b>Here's your FitBuddy profile:</b>\n📛 Name: {{ $('Save User Profile').item.json.first_name }}\n🎂 Age: {{ $('Save User Profile').item.json.age }}\n⚖️ Weight: {{ $('Save User Profile').item.json.weight_kg }}kg | Height: {{ $('Save User Profile').item.json.height_cm }}cm\n🎯 Goal: {{ $('Save User Profile').item.json.goal }}\n🔥 Daily target: <b>{{ $('Save User Profile').item.json.daily_calorie_target }} kcal</b>\n\n✅ I'll send your daily check-in every morning at <b>8:00 AM</b>.\n\nOr start one now by typing /checkin 💪",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-profile",
+      "name": "Send Profile Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2500, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build dynamic help menu from feature-registry.json\n// In production this reads via HTTP Request node; here we build a static fallback\nconst helpText = `🤖 <b>FitBuddy AI — Available Commands</b>\n\n<b>Core:</b>\n/checkin — Start your daily check-in\n/progress — See your weekly report\n/help — Show this menu\n\n<b>Features:</b>\n/analyze — Analyze a food photo 📸\n/supplements — Get supplement recommendations 💊\n\n<i>More features coming soon!</i>`;\n\nreturn [{ json: { helpText } }];"
+      },
+      "id": "node-build-help",
+      "name": "Build Help Menu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2700, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Process Response & Advance Step').item.json.telegramId }}",
+        "text": "={{ $json.helpText }}",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-send-help",
+      "name": "Send Help Menu",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2900, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Process Response & Advance Step').item.json.telegramId }}",
+        "text": "⚠️ Something went wrong during setup. Please type /start to try again.",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "node-error-msg",
+      "name": "Send Error Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2100, 600],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "FitBuddy Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{ "node": "Check Existing User", "type": "main", "index": 0 }]]
+    },
+    "Check Existing User": {
+      "main": [[{ "node": "Already Onboarded?", "type": "main", "index": 0 }]]
+    },
+    "Already Onboarded?": {
+      "main": [
+        [{ "node": "Send Welcome Back", "type": "main", "index": 0 }],
+        [{ "node": "Upsert User", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upsert User": {
+      "main": [[{ "node": "Get or Create Conv State", "type": "main", "index": 0 }]]
+    },
+    "Get or Create Conv State": {
+      "main": [[{ "node": "Switch on Step", "type": "main", "index": 0 }]]
+    },
+    "Switch on Step": {
+      "main": [
+        [{ "node": "Ask Name", "type": "main", "index": 0 }],
+        [{ "node": "Ask Age", "type": "main", "index": 0 }],
+        [{ "node": "Ask Gender", "type": "main", "index": 0 }],
+        [{ "node": "Ask Height", "type": "main", "index": 0 }],
+        [{ "node": "Ask Weight", "type": "main", "index": 0 }],
+        [{ "node": "Ask Activity", "type": "main", "index": 0 }],
+        [{ "node": "Ask Goal", "type": "main", "index": 0 }],
+        [{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ask Name": {
+      "main": [[{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]]
+    },
+    "Ask Age": {
+      "main": [[{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]]
+    },
+    "Ask Gender": {
+      "main": [[{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]]
+    },
+    "Ask Height": {
+      "main": [[{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]]
+    },
+    "Ask Weight": {
+      "main": [[{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]]
+    },
+    "Ask Activity": {
+      "main": [[{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]]
+    },
+    "Ask Goal": {
+      "main": [[{ "node": "Process Response & Advance Step", "type": "main", "index": 0 }]]
+    },
+    "Process Response & Advance Step": {
+      "main": [[{ "node": "Update Conv State", "type": "main", "index": 0 }]]
+    },
+    "Update Conv State": {
+      "main": [[{ "node": "Onboarding Complete?", "type": "main", "index": 0 }]]
+    },
+    "Onboarding Complete?": {
+      "main": [
+        [{ "node": "Save User Profile", "type": "main", "index": 0 }],
+        [{ "node": "Send Error Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Save User Profile": {
+      "main": [[{ "node": "Delete Conv State", "type": "main", "index": 0 }]]
+    },
+    "Delete Conv State": {
+      "main": [[{ "node": "Send Profile Summary", "type": "main", "index": 0 }]]
+    },
+    "Send Profile Summary": {
+      "main": [[{ "node": "Build Help Menu", "type": "main", "index": 0 }]]
+    },
+    "Build Help Menu": {
+      "main": [[{ "node": "Send Help Menu", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": ""
+  },
+  "versionId": "01-onboarding-v1",
+  "id": "1",
+  "meta": { "instanceId": "fitbuddy" }
+}

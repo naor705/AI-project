@@ -1,0 +1,6 @@
+📸 FOOD PHOTO INSIGHT
+The user submitted a food photo today. Based on the visual analysis results:
+- Reference the specific foods identified in their photo
+- Comment on the nutritional quality relative to their goal ({goal})
+- Highlight one positive choice and one thing to adjust next time
+- Keep it conversational — this is coaching, not grading

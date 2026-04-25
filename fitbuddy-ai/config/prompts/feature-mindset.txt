@@ -1,0 +1,6 @@
+🧠 MINDSET COACHING
+Based on the user's mood ({mood}), energy level ({energy_level}/10), and recent consistency:
+- Provide one evidence-based mindset insight relevant to their current state
+- Give one specific habit or micro-action they can take today to build mental resilience
+- Share a brief reframe for any struggles visible in their recent data
+- Keep the tone warm, grounded, and science-backed — not generic positivity
