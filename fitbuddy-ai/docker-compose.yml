@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -12,7 +10,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -33,23 +31,22 @@ services:
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
       - DB_POSTGRESDB_USER=${POSTGRES_USER}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-      - N8N_HOST=${N8N_HOST}
-      - N8N_PORT=${N8N_PORT}
-      - N8N_PROTOCOL=${N8N_PROTOCOL}
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5050
+      - N8N_PROTOCOL=http
       - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - EXECUTIONS_PROCESS=main
       - GENERIC_TIMEZONE=UTC
-      - N8N_METRICS=true
       - N8N_LOG_LEVEL=info
     volumes:
       - n8n_data:/home/node/.n8n
       - ./config:/home/node/fitbuddy/config:ro
       - ./workflows:/home/node/fitbuddy/workflows:ro
     ports:
-      - "5678:5678"
+      - "5050:5050"
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:5678/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:5050/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
