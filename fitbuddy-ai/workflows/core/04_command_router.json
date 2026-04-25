@@ -6,24 +6,19 @@
         "updates": ["message", "callback_query"],
         "additionalFields": {}
       },
-      "id": "node-tg-trigger",
+      "id": "tg-trigger",
       "name": "Telegram Trigger",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1,
       "position": [100, 300],
       "webhookId": "fitbuddy-command-router",
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     },
     {
       "parameters": {
-        "jsCode": "// Extract the command from the incoming message or callback\nconst trigger = $json;\nconst message = trigger.message || {};\nconst callbackQuery = trigger.callback_query || {};\n\nconst text = message.text || callbackQuery.data || '';\nconst telegramId = message.from?.id || callbackQuery.from?.id;\nconst firstName = message.from?.first_name || callbackQuery.from?.first_name || 'there';\n\n// Only handle messages that start with /\nconst isCommand = text.startsWith('/');\nconst isCallback = !!callbackQuery.data;\n\nif (!isCommand && !isCallback) {\n  return [{ json: { skip: true } }];\n}\n\nconst command = text.split(' ')[0].toLowerCase();\n\nreturn [{ json: { command, telegramId, firstName, text, isCommand, isCallback, skip: false } }];"
+        "jsCode": "const trigger = $json;\nconst message = trigger.message || {};\nconst cb = trigger.callback_query || {};\nconst text = message.text || cb.data || '';\nconst telegramId = message.from?.id || cb.from?.id;\nconst firstName = message.from?.first_name || cb.from?.first_name || 'there';\nif (!text.startsWith('/')) return [{ json: { skip: true } }];\nconst command = text.split(' ')[0].toLowerCase();\nreturn [{ json: { command, telegramId, firstName, skip: false } }];"
       },
-      "id": "node-extract-command",
+      "id": "extract-cmd",
       "name": "Extract Command",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -32,108 +27,62 @@
     {
       "parameters": {
         "conditions": {
-          "conditions": [
-            {
-              "leftValue": "={{ $json.skip }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
-            }
-          ]
+          "boolean": [{ "value1": "={{ $json.skip }}", "value2": true }]
         }
       },
-      "id": "node-if-skip",
-      "name": "Skip Non-Commands?",
+      "id": "if-skip",
+      "name": "Is Command?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [500, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, onboarding_complete, first_name FROM users WHERE telegram_id = $1",
-        "additionalFields": {
-          "queryParams": "={{ $('Extract Command').item.json.telegramId }}"
-        }
+        "query": "SELECT id, onboarding_complete, first_name FROM users WHERE telegram_id=$1",
+        "additionalFields": { "queryParams": "={{ $('Extract Command').item.json.telegramId }}" }
       },
-      "id": "node-verify-user",
-      "name": "Verify User Exists",
+      "id": "verify-user",
+      "name": "Verify User",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [700, 400],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
         "conditions": {
-          "conditions": [
-            {
-              "leftValue": "={{ $json.onboarding_complete }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
-            }
-          ]
+          "boolean": [{ "value1": "={{ $json.onboarding_complete }}", "value2": true }]
         }
       },
-      "id": "node-if-onboarded",
-      "name": "Onboarding Complete?",
+      "id": "if-onboarded",
+      "name": "Onboarded?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [900, 400]
     },
     {
       "parameters": {
         "chatId": "={{ $('Extract Command').item.json.telegramId }}",
-        "text": "👋 Welcome! Let's get you set up first.\n\nType /start to begin your FitBuddy profile — it only takes 2 minutes!",
+        "text": "👋 Let's get you set up first!\n\nType /start to begin.",
         "additionalFields": { "parse_mode": "HTML" }
       },
-      "id": "node-redirect-start",
-      "name": "Redirect to /start",
+      "id": "redirect-start",
+      "name": "Redirect to Start",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1100, 250],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     },
     {
       "parameters": {
-        "url": "file:///home/node/fitbuddy/config/commands.json",
-        "options": {}
+        "jsCode": "const command = $('Extract Command').item.json.command;\nconst telegramId = $('Extract Command').item.json.telegramId;\n\nconst routes = {\n  '/checkin':     { workflowId: '2' },\n  '/analyze':     { workflowId: '7', feature: 'food_image_analysis' },\n  '/supplements': { workflowId: '8', feature: 'supplement_advisor' },\n  '/progress':    { workflowId: '6' },\n  '/help':        { action: 'help' }\n};\n\nconst match = routes[command];\nif (!match) return [{ json: { action: 'unknown', command, telegramId } }];\nif (match.action === 'help') return [{ json: { action: 'help', telegramId } }];\nreturn [{ json: { action: 'dispatch', workflowId: match.workflowId, telegramId, command } }];"
       },
-      "id": "node-read-commands",
-      "name": "Read commands.json",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [1100, 450]
-    },
-    {
-      "parameters": {
-        "url": "file:///home/node/fitbuddy/config/feature-registry.json",
-        "options": {}
-      },
-      "id": "node-read-registry",
-      "name": "Read feature-registry.json",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [1100, 600]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Match the incoming command against commands.json\n// Check if required feature is enabled in feature-registry.json\nconst command = $('Extract Command').item.json.command;\nconst commandsRaw = $('Read commands.json').item.json;\nconst registryRaw = $('Read feature-registry.json').item.json;\n\nconst commandsData = typeof commandsRaw === 'string' ? JSON.parse(commandsRaw) : commandsRaw;\nconst registry = typeof registryRaw === 'string' ? JSON.parse(registryRaw) : registryRaw;\n\nconst matched = (commandsData.commands || []).find(c => c.command === command);\n\nif (!matched) {\n  return [{ json: { action: 'unknown_command', command } }];\n}\n\nif (matched.feature_id) {\n  const feature = (registry.features || []).find(f => f.id === matched.feature_id);\n  if (!feature || !feature.enabled) {\n    return [{ json: {\n      action: 'feature_disabled',\n      feature_name: feature?.name || matched.feature_id,\n      command\n    } }];\n  }\n}\n\n// Build /help response if command is /help\nif (command === '/help') {\n  const enabledFeatures = (registry.features || []).filter(f => f.enabled);\n  const featureLines = enabledFeatures.map(f => {\n    const cmds = (commandsData.commands || []).filter(c => c.feature_id === f.id);\n    return cmds.map(c => `${c.command} — ${c.description}`).join('\\n');\n  }).filter(Boolean);\n\n  const helpText = `🤖 <b>FitBuddy AI — Available Commands</b>\\n\\n<b>Core:</b>\\n/checkin — Start your daily check-in\\n/progress — See your weekly report\\n/help — Show this menu\\n\\n<b>Features:</b>\\n${featureLines.join('\\n') || 'No extra features enabled.'}`;\n\n  return [{ json: { action: 'help', helpText } }];\n}\n\nreturn [{ json: {\n  action: 'dispatch',\n  workflow: matched.workflow,\n  command,\n  isCore: matched.core || false\n} }];"
-      },
-      "id": "node-match-command",
+      "id": "match-cmd",
       "name": "Match Command",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, 500]
+      "position": [1100, 500]
     },
     {
       "parameters": {
@@ -141,134 +90,88 @@
         "value1": "={{ $json.action }}",
         "rules": {
           "rules": [
-            { "value2": "dispatch" },
-            { "value2": "feature_disabled" },
-            { "value2": "unknown_command" },
-            { "value2": "help" }
+            { "value2": "dispatch", "output": 0 },
+            { "value2": "help", "output": 1 },
+            { "value2": "unknown", "output": 2 }
           ]
-        }
+        },
+        "fallbackOutput": 2
       },
-      "id": "node-switch-action",
+      "id": "route-action",
       "name": "Route Action",
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 3,
-      "position": [1500, 500]
+      "typeVersion": 1,
+      "position": [1300, 500]
     },
     {
       "parameters": {
-        "workflowId": "",
+        "workflowId": "={{ $json.workflowId }}",
         "options": {},
         "workflowInputs": {
           "values": [
-            { "name": "telegram_id", "value": "={{ $('Extract Command').item.json.telegramId }}" },
-            { "name": "command", "value": "={{ $('Extract Command').item.json.command }}" }
+            { "name": "telegram_id", "value": "={{ $json.telegramId }}" }
           ]
         }
       },
-      "id": "node-execute-workflow",
-      "name": "Execute Feature Workflow",
+      "id": "exec-workflow",
+      "name": "Execute Workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
-      "position": [1700, 350]
+      "position": [1500, 380]
     },
     {
       "parameters": {
-        "chatId": "={{ $('Extract Command').item.json.telegramId }}",
-        "text": "🚧 <b>{{ $json.feature_name }}</b> isn't enabled yet.\n\nStay tuned — more features are coming soon!",
+        "chatId": "={{ $json.telegramId }}",
+        "text": "🤖 <b>FitBuddy AI — Commands</b>\n\n/checkin — Daily check-in\n/analyze — Analyze a food photo 📸\n/supplements — Supplement advice 💊\n/progress — Weekly report 📊\n/help — Show this menu",
         "additionalFields": { "parse_mode": "HTML" }
       },
-      "id": "node-feature-disabled",
-      "name": "Feature Disabled",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
-      "position": [1700, 470],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Extract Command').item.json.telegramId }}",
-        "text": "❓ Unknown command: <code>{{ $json.command }}</code>\n\nType /help to see all available commands.",
-        "additionalFields": { "parse_mode": "HTML" }
-      },
-      "id": "node-unknown-command",
-      "name": "Unknown Command",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
-      "position": [1700, 590],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Extract Command').item.json.telegramId }}",
-        "text": "={{ $json.helpText }}",
-        "additionalFields": { "parse_mode": "HTML" }
-      },
-      "id": "node-send-help",
+      "id": "send-help",
       "name": "Send Help",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1700, 710],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
+      "position": [1500, 520],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramId }}",
+        "text": "❓ Unknown command: <code>{{ $json.command }}</code>\n\nType /help to see available commands.",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "unknown-cmd",
+      "name": "Unknown Command",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1500, 660],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     }
   ],
   "connections": {
-    "Telegram Trigger": {
-      "main": [[{ "node": "Extract Command", "type": "main", "index": 0 }]]
-    },
-    "Extract Command": {
-      "main": [[{ "node": "Skip Non-Commands?", "type": "main", "index": 0 }]]
-    },
-    "Skip Non-Commands?": {
+    "Telegram Trigger": { "main": [[{ "node": "Extract Command", "type": "main", "index": 0 }]] },
+    "Extract Command": { "main": [[{ "node": "Is Command?", "type": "main", "index": 0 }]] },
+    "Is Command?": {
       "main": [
         [],
-        [{ "node": "Verify User Exists", "type": "main", "index": 0 }]
+        [{ "node": "Verify User", "type": "main", "index": 0 }]
       ]
     },
-    "Verify User Exists": {
-      "main": [[{ "node": "Onboarding Complete?", "type": "main", "index": 0 }]]
-    },
-    "Onboarding Complete?": {
+    "Verify User": { "main": [[{ "node": "Onboarded?", "type": "main", "index": 0 }]] },
+    "Onboarded?": {
       "main": [
-        [{ "node": "Read commands.json", "type": "main", "index": 0 }],
-        [{ "node": "Redirect to /start", "type": "main", "index": 0 }]
+        [{ "node": "Match Command", "type": "main", "index": 0 }],
+        [{ "node": "Redirect to Start", "type": "main", "index": 0 }]
       ]
     },
-    "Read commands.json": {
-      "main": [[{ "node": "Match Command", "type": "main", "index": 0 }]]
-    },
-    "Read feature-registry.json": {
-      "main": [[{ "node": "Match Command", "type": "main", "index": 0 }]]
-    },
-    "Match Command": {
-      "main": [[{ "node": "Route Action", "type": "main", "index": 0 }]]
-    },
+    "Match Command": { "main": [[{ "node": "Route Action", "type": "main", "index": 0 }]] },
     "Route Action": {
       "main": [
-        [{ "node": "Execute Feature Workflow", "type": "main", "index": 0 }],
-        [{ "node": "Feature Disabled", "type": "main", "index": 0 }],
-        [{ "node": "Unknown Command", "type": "main", "index": 0 }],
-        [{ "node": "Send Help", "type": "main", "index": 0 }]
+        [{ "node": "Execute Workflow", "type": "main", "index": 0 }],
+        [{ "node": "Send Help", "type": "main", "index": 0 }],
+        [{ "node": "Unknown Command", "type": "main", "index": 0 }]
       ]
     }
   },
   "active": true,
   "settings": { "executionOrder": "v1" },
-  "versionId": "04-command-router-v1",
-  "id": "4",
-  "meta": { "instanceId": "fitbuddy" }
+  "id": "4"
 }
