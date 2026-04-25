@@ -8,7 +8,7 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "node-webhook",
+      "id": "webhook",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
@@ -18,112 +18,51 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, telegram_id, first_name, age, gender, weight_kg, goal, activity_level, daily_calorie_target\nFROM users\nWHERE telegram_id = $1",
-        "additionalFields": {
-          "queryParams": "={{ $json.body.telegram_id }}"
-        }
+        "query": "SELECT id, telegram_id, first_name, age, gender, weight_kg, goal, activity_level, daily_calorie_target FROM users WHERE telegram_id=$1",
+        "additionalFields": { "queryParams": "={{ $json.body.telegram_id }}" }
       },
-      "id": "node-get-user",
-      "name": "Get User Profile",
+      "id": "get-user",
+      "name": "Get User",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [300, 300],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT log_date, calories_consumed, protein_g, carbs_g, fat_g,\n       sleep_hours, energy_level, mood, workout_done, food_description\nFROM daily_logs\nWHERE user_id = $1\nORDER BY log_date DESC\nLIMIT 7",
-        "additionalFields": {
-          "queryParams": "={{ $json.id }}"
-        }
+        "query": "SELECT log_date, calories_consumed, protein_g, carbs_g, fat_g, sleep_hours, energy_level, food_description FROM daily_logs WHERE user_id=$1 ORDER BY log_date DESC LIMIT 7",
+        "additionalFields": { "queryParams": "={{ $json.id }}" }
       },
-      "id": "node-get-recent-logs",
-      "name": "Get Recent 7-Day Logs",
+      "id": "get-logs",
+      "name": "Get Logs",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [500, 250],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "typeVersion": 1,
+      "position": [500, 300],
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT recommendations, identified_gaps, recommended_at\nFROM supplement_recommendations\nWHERE user_id = $1\nORDER BY recommended_at DESC\nLIMIT 1",
-        "additionalFields": {
-          "queryParams": "={{ $('Get User Profile').item.json.id }}"
-        }
+        "chatId": "={{ $('Get User').item.json.telegram_id }}",
+        "text": "💊 Analyzing your recent nutrition patterns...",
+        "additionalFields": {}
       },
-      "id": "node-get-last-rec",
-      "name": "Get Last Supplement Rec",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [500, 400],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Get User Profile').item.json.telegram_id }}",
-        "text": "💊 Analyzing your recent nutrition patterns...\n\n🔍 Identifying potential gaps and crafting your supplement plan.",
-        "additionalFields": { "parse_mode": "HTML" }
-      },
-      "id": "node-send-analyzing",
-      "name": "Send Analyzing Message",
+      "id": "send-analyzing",
+      "name": "Send Analyzing",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [700, 300],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     },
     {
       "parameters": {
-        "url": "file:///home/node/fitbuddy/config/prompts/base-system.txt",
-        "options": {}
+        "jsCode": "const user = $('Get User').item.json;\nconst logs = $('Get Logs').all().map(i => i.json);\nconst n = logs.length || 1;\nconst avgProt = (logs.reduce((s,d)=>s+(parseFloat(d.protein_g)||0),0)/n).toFixed(1);\nconst avgCal = Math.round(logs.reduce((s,d)=>s+(d.calories_consumed||0),0)/n);\nconst avgSleep = (logs.reduce((s,d)=>s+(parseFloat(d.sleep_hours)||0),0)/n).toFixed(1);\nconst avgEnergy = (logs.reduce((s,d)=>s+(d.energy_level||0),0)/n).toFixed(1);\nconst foodSample = logs.filter(d=>d.food_description).slice(0,3).map((d,i)=>`Day ${i+1}: ${d.food_description}`).join('\\n') || 'No food logs yet';\nconst prompt = `You are FitBuddy AI, an expert nutrition coach. Provide personalized supplement advice.\n\nUSER: ${user.first_name}, Age ${user.age}, ${user.gender}, ${user.weight_kg}kg\nGoal: ${user.goal} | Activity: ${user.activity_level} | Daily target: ${user.daily_calorie_target} kcal\n\n7-DAY AVERAGES:\nCalories: ${avgCal} kcal | Protein: ${avgProt}g | Sleep: ${avgSleep}h | Energy: ${avgEnergy}/10\n\nRECENT FOOD:\n${foodSample}\n\n💊 SUPPLEMENT ADVICE\nBased on the goal (${user.goal}), recent food logs, and energy patterns:\n- Identify 1-2 nutritional gaps\n- Recommend 2-3 specific supplements with dosage and timing\n- Flag any to avoid\n- Always note: consult a healthcare provider before starting supplements`;\nreturn [{ json: { prompt, userId: user.id, telegramId: user.telegram_id, goal: user.goal } }];"
       },
-      "id": "node-read-system",
-      "name": "Read System Prompt",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [900, 250]
-    },
-    {
-      "parameters": {
-        "url": "file:///home/node/fitbuddy/config/prompts/feature-supplements.txt",
-        "options": {}
-      },
-      "id": "node-read-fragment",
-      "name": "Read Supplement Prompt",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [900, 400]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Build supplement analysis prompt\nconst user = $('Get User Profile').item.json;\nconst logs = $('Get Recent 7-Day Logs').all().map(i => i.json);\nconst lastRec = $('Get Last Supplement Rec').item.json;\nconst systemPromptRaw = $('Read System Prompt').item.json;\nconst fragmentRaw = $('Read Supplement Prompt').item.json;\n\nconst systemPrompt = typeof systemPromptRaw === 'string' ? systemPromptRaw : (systemPromptRaw.data || JSON.stringify(systemPromptRaw));\nlet fragment = typeof fragmentRaw === 'string' ? fragmentRaw : (fragmentRaw.data || JSON.stringify(fragmentRaw));\n\n// Substitute fragment variables\nfragment = fragment.replace(/{goal}/g, user.goal || 'maintenance');\n\n// Build nutrition summary from 7-day logs\nconst avgProtein = logs.length > 0\n  ? (logs.reduce((s, d) => s + (parseFloat(d.protein_g) || 0), 0) / logs.length).toFixed(1)\n  : 0;\nconst avgCalories = logs.length > 0\n  ? Math.round(logs.reduce((s, d) => s + (d.calories_consumed || 0), 0) / logs.length)\n  : 0;\nconst avgSleep = logs.length > 0\n  ? (logs.reduce((s, d) => s + (parseFloat(d.sleep_hours) || 0), 0) / logs.length).toFixed(1)\n  : 0;\nconst avgEnergy = logs.length > 0\n  ? (logs.reduce((s, d) => s + (d.energy_level || 0), 0) / logs.length).toFixed(1)\n  : 0;\n\nconst foodDescriptions = logs\n  .filter(d => d.food_description)\n  .map((d, i) => `Day ${i+1}: ${d.food_description}`)\n  .join('\\n') || 'No food descriptions logged.';\n\nconst lastRecText = lastRec?.recommendations\n  ? `Previous recommendations (${lastRec.recommended_at?.split('T')[0] || 'unknown date'}): ${JSON.stringify(lastRec.recommendations).substring(0, 300)}`\n  : 'First supplement recommendation for this user.';\n\nconst userPrompt = `Provide personalized supplement advice for this user:\\n\\n` +\n  `USER PROFILE:\\n` +\n  `Name: ${user.first_name} | Age: ${user.age} | Gender: ${user.gender}\\n` +\n  `Weight: ${user.weight_kg}kg | Goal: ${user.goal} | Activity: ${user.activity_level}\\n` +\n  `Daily calorie target: ${user.daily_calorie_target} kcal\\n\\n` +\n  `7-DAY NUTRITION AVERAGES:\\n` +\n  `Avg calories: ${avgCalories} kcal | Avg protein: ${avgProtein}g\\n` +\n  `Avg sleep: ${avgSleep}h | Avg energy: ${avgEnergy}/10\\n\\n` +\n  `RECENT FOOD LOG:\\n${foodDescriptions}\\n\\n` +\n  `PREVIOUS RECOMMENDATION:\\n${lastRecText}\\n\\n` +\n  fragment;\n\nreturn [{ json: {\n  systemPrompt,\n  userPrompt,\n  userId: user.id,\n  telegramId: user.telegram_id,\n  goal: user.goal\n} }];"
-      },
-      "id": "node-build-prompt",
-      "name": "Build Supplement Prompt",
+      "id": "build-prompt",
+      "name": "Build Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1100, 300]
+      "position": [900, 300]
     },
     {
       "parameters": {
@@ -132,143 +71,74 @@
         "model": "gpt-4o",
         "messages": {
           "values": [
-            { "role": "system", "content": "={{ $json.systemPrompt }}" },
-            { "role": "user", "content": "={{ $json.userPrompt }}" }
+            { "role": "user", "content": "={{ $json.prompt }}" }
           ]
         },
         "options": { "temperature": 0.5, "maxTokens": 800 }
       },
-      "id": "node-openai-call",
-      "name": "GPT-4o Supplement Analysis",
+      "id": "openai-call",
+      "name": "GPT-4o Analysis",
       "type": "n8n-nodes-base.openAi",
       "typeVersion": 1,
-      "position": [1300, 300],
-      "credentials": {
-        "openAiApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy OpenAI"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Parse and structure the supplement response\nconst aiContent = $json.message?.content || $json.choices?.[0]?.message?.content || '';\nconst prevData = $('Build Supplement Prompt').item.json;\n\n// Extract supplement list with basic parsing\nconst lines = aiContent.split('\\n');\nconst recommendations = [];\nconst gaps = [];\n\nlines.forEach(line => {\n  const trimmed = line.trim();\n  if (trimmed.match(/^[-•*]/) && (trimmed.includes('mg') || trimmed.includes('mcg') || trimmed.includes('g '))) {\n    recommendations.push(trimmed.replace(/^[-•*]\\s*/, ''));\n  }\n  if (trimmed.toLowerCase().includes('gap') || trimmed.toLowerCase().includes('deficien')) {\n    gaps.push(trimmed);\n  }\n});\n\nreturn [{ json: {\n  fullResponse: aiContent,\n  recommendations: recommendations.slice(0, 5),\n  gaps: gaps.slice(0, 3),\n  userId: prevData.userId,\n  telegramId: prevData.telegramId,\n  goal: prevData.goal\n} }];"
-      },
-      "id": "node-parse-response",
-      "name": "Parse Supplement Response",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1500, 300]
+      "position": [1100, 300],
+      "credentials": { "openAiApi": { "id": "REPLACE_OPENAI_CRED_ID", "name": "FitBuddy OpenAI" } }
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO supplement_recommendations\n  (user_id, goal_at_time, recommendations, identified_gaps, raw_ai_response)\nVALUES ($1, $2, $3::jsonb, $4::jsonb, $5)\nRETURNING id",
-        "additionalFields": {
-          "queryParams": "={{ [\n  $json.userId,\n  $json.goal,\n  JSON.stringify($json.recommendations),\n  JSON.stringify($json.gaps),\n  $json.fullResponse\n].join(',') }}"
-        }
+        "query": "INSERT INTO supplement_recommendations (user_id, goal_at_time, recommendations, raw_ai_response) VALUES ($1, $2, '[]'::jsonb, $3)",
+        "additionalFields": { "queryParams": "={{ [$('Build Prompt').item.json.userId, $('Build Prompt').item.json.goal, $json.message?.content || ''].join(',') }}" }
       },
-      "id": "node-save-rec",
-      "name": "Save Supplement Rec",
+      "id": "save-rec",
+      "name": "Save Rec",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [1700, 250],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "typeVersion": 1,
+      "position": [1300, 250],
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO feature_events (user_id, feature_id, event_type, payload)\nVALUES ($1, 'supplement_advisor', 'supplement_recommended', $2::jsonb)",
-        "additionalFields": {
-          "queryParams": "={{ [\n  $('Parse Supplement Response').item.json.userId,\n  JSON.stringify({ count: $('Parse Supplement Response').item.json.recommendations.length })\n].join(',') }}"
-        }
+        "query": "INSERT INTO feature_events (user_id, feature_id, event_type, payload) VALUES ($1, 'supplement_advisor', 'supplement_recommended', '{}'::jsonb)",
+        "additionalFields": { "queryParams": "={{ $('Build Prompt').item.json.userId }}" }
       },
-      "id": "node-log-event",
-      "name": "Log Feature Event",
+      "id": "log-event",
+      "name": "Log Event",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [1700, 400],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "typeVersion": 1,
+      "position": [1300, 400],
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
-        "chatId": "={{ $('Parse Supplement Response').item.json.telegramId }}",
-        "text": "={{ `💊 <b>Your Personalized Supplement Plan</b>\\n\\n` + $('Parse Supplement Response').item.json.fullResponse + `\\n\\n<i>⚕️ Always consult a healthcare provider before starting any new supplement.</i>` }}",
-        "additionalFields": {
-          "parse_mode": "HTML",
-          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"🔁 Refresh in 7 days\",\"callback_data\":\"supp_remind_7d\"},{\"text\":\"📋 View my history\",\"callback_data\":\"supp_history\"}]]}"
-        }
+        "chatId": "={{ $('Build Prompt').item.json.telegramId }}",
+        "text": "={{ `💊 <b>Your Personalized Supplement Plan</b>\\n\\n${$json.message?.content || ''}\\n\\n<i>⚕️ Always consult a healthcare provider before starting any new supplement.</i>` }}",
+        "additionalFields": { "parse_mode": "HTML" }
       },
-      "id": "node-send-result",
-      "name": "Send Supplement Recommendations",
+      "id": "send-result",
+      "name": "Send Result",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1900, 300],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
+      "position": [1500, 300],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     }
   ],
   "connections": {
-    "Webhook Trigger": {
-      "main": [[{ "node": "Get User Profile", "type": "main", "index": 0 }]]
-    },
-    "Get User Profile": {
+    "Webhook Trigger": { "main": [[{ "node": "Get User", "type": "main", "index": 0 }]] },
+    "Get User": { "main": [[{ "node": "Get Logs", "type": "main", "index": 0 }]] },
+    "Get Logs": { "main": [[{ "node": "Send Analyzing", "type": "main", "index": 0 }]] },
+    "Send Analyzing": { "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]] },
+    "Build Prompt": { "main": [[{ "node": "GPT-4o Analysis", "type": "main", "index": 0 }]] },
+    "GPT-4o Analysis": {
       "main": [
-        [{ "node": "Get Recent 7-Day Logs", "type": "main", "index": 0 }],
-        [{ "node": "Get Last Supplement Rec", "type": "main", "index": 0 }]
+        [{ "node": "Save Rec", "type": "main", "index": 0 }],
+        [{ "node": "Log Event", "type": "main", "index": 0 }]
       ]
     },
-    "Get Recent 7-Day Logs": {
-      "main": [[{ "node": "Send Analyzing Message", "type": "main", "index": 0 }]]
-    },
-    "Get Last Supplement Rec": {
-      "main": [[{ "node": "Read System Prompt", "type": "main", "index": 0 }]]
-    },
-    "Send Analyzing Message": {
-      "main": [[{ "node": "Read Supplement Prompt", "type": "main", "index": 0 }]]
-    },
-    "Read System Prompt": {
-      "main": [[{ "node": "Build Supplement Prompt", "type": "main", "index": 0 }]]
-    },
-    "Read Supplement Prompt": {
-      "main": [[{ "node": "Build Supplement Prompt", "type": "main", "index": 0 }]]
-    },
-    "Build Supplement Prompt": {
-      "main": [[{ "node": "GPT-4o Supplement Analysis", "type": "main", "index": 0 }]]
-    },
-    "GPT-4o Supplement Analysis": {
-      "main": [[{ "node": "Parse Supplement Response", "type": "main", "index": 0 }]]
-    },
-    "Parse Supplement Response": {
-      "main": [
-        [{ "node": "Save Supplement Rec", "type": "main", "index": 0 }],
-        [{ "node": "Log Feature Event", "type": "main", "index": 0 }]
-      ]
-    },
-    "Save Supplement Rec": {
-      "main": [[{ "node": "Send Supplement Recommendations", "type": "main", "index": 0 }]]
-    },
-    "Log Feature Event": {
-      "main": [[{ "node": "Send Supplement Recommendations", "type": "main", "index": 0 }]]
-    }
+    "Save Rec": { "main": [[{ "node": "Send Result", "type": "main", "index": 0 }]] },
+    "Log Event": { "main": [[{ "node": "Send Result", "type": "main", "index": 0 }]] }
   },
   "active": true,
   "settings": { "executionOrder": "v1" },
-  "versionId": "feature-supplement-v1",
-  "id": "8",
-  "meta": { "instanceId": "fitbuddy" }
+  "id": "8"
 }

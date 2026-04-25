@@ -1,5 +1,5 @@
 {
-  "name": "03 — AI Engine (Composable Prompt Builder)",
+  "name": "03 — AI Engine",
   "nodes": [
     {
       "parameters": {
@@ -8,7 +8,7 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "node-webhook",
+      "id": "webhook",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
@@ -18,145 +18,51 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, telegram_id, first_name, age, gender, weight_kg, height_cm,\n       activity_level, goal, daily_calorie_target\nFROM users\nWHERE id = $1",
-        "additionalFields": {
-          "queryParams": "={{ $json.body.user_id }}"
-        }
+        "query": "SELECT id, telegram_id, first_name, age, gender, weight_kg, height_cm, activity_level, goal, daily_calorie_target FROM users WHERE id=$1",
+        "additionalFields": { "queryParams": "={{ $json.body.user_id }}" }
       },
-      "id": "node-get-user",
-      "name": "Get User Profile",
+      "id": "get-user",
+      "name": "Get User",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [300, 300],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT sleep_hours, energy_level, mood, food_description, calories_consumed,\n       protein_g, carbs_g, fat_g, workout_description, steps, water_ml, log_date\nFROM daily_logs\nWHERE user_id = $1 AND log_date = $2",
-        "additionalFields": {
-          "queryParams": "={{ [$('Webhook Trigger').item.json.body.user_id, $('Webhook Trigger').item.json.body.log_date].join(',') }}"
-        }
+        "query": "SELECT sleep_hours, energy_level, mood, food_description, calories_consumed, protein_g, carbs_g, fat_g, workout_description, steps, water_ml, log_date FROM daily_logs WHERE user_id=$1 AND log_date=$2",
+        "additionalFields": { "queryParams": "={{ [$('Webhook Trigger').item.json.body.user_id, $('Webhook Trigger').item.json.body.log_date].join(',') }}" }
       },
-      "id": "node-get-today-log",
+      "id": "get-log",
       "name": "Get Today Log",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [500, 200],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT log_date, calories_consumed, protein_g, carbs_g, fat_g,\n       sleep_hours, energy_level, mood, workout_done, steps, water_ml\nFROM daily_logs\nWHERE user_id = $1\nORDER BY log_date DESC\nLIMIT 7",
-        "additionalFields": {
-          "queryParams": "={{ $('Webhook Trigger').item.json.body.user_id }}"
-        }
+        "query": "SELECT log_date, calories_consumed, sleep_hours, energy_level, workout_done, steps FROM daily_logs WHERE user_id=$1 ORDER BY log_date DESC LIMIT 7",
+        "additionalFields": { "queryParams": "={{ $('Webhook Trigger').item.json.body.user_id }}" }
       },
-      "id": "node-get-7day",
+      "id": "get-7day",
       "name": "Get 7-Day Trend",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [500, 350],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "typeVersion": 1,
+      "position": [500, 400],
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT nutrition_plan, workout_plan, motivational_message\nFROM ai_recommendations\nWHERE user_id = $1\nORDER BY recommendation_date DESC\nLIMIT 1",
-        "additionalFields": {
-          "queryParams": "={{ $('Webhook Trigger').item.json.body.user_id }}"
-        }
+        "jsCode": "const user = $('Get User').item.json;\nconst log = $('Get Today Log').item.json;\nconst trends = $('Get 7-Day Trend').all().map(i => i.json);\n\nconst trendText = trends.map(d =>\n  `  ${d.log_date}: ${d.calories_consumed||0} kcal | Sleep ${d.sleep_hours||'?'}h | Energy ${d.energy_level||'?'}/10 | Workout ${d.workout_done ? '✅' : '❌'} | Steps ${d.steps||0}`\n).join('\\n') || 'No previous data yet.';\n\nconst systemPrompt = `You are FitBuddy AI — an expert, encouraging personal fitness and nutrition coach. Always be specific, actionable, and use the user's actual data. Format for Telegram using emojis. Never give medical diagnoses.`;\n\nconst userPrompt = `Analyze this user's data and generate their daily FitBuddy report.\n\nUSER: ${user.first_name}, Age ${user.age}, ${user.gender}, ${user.weight_kg}kg/${user.height_cm}cm\nGoal: ${user.goal} | Daily target: ${user.daily_calorie_target} kcal | Activity: ${user.activity_level}\n\nTODAY (${log.log_date||'today'}):\n- Sleep: ${log.sleep_hours||0}h | Energy: ${log.energy_level||5}/10 | Mood: ${log.mood||'okay'}\n- Food: ${log.food_description||'Not provided'} (~${log.calories_consumed||0} kcal)\n- Protein: ${log.protein_g||0}g | Carbs: ${log.carbs_g||0}g | Fat: ${log.fat_g||0}g\n- Workout: ${log.workout_description||'Rest day'} | Steps: ${log.steps||0} | Water: ${log.water_ml||0}ml\n\n7-DAY TREND:\n${trendText}\n\nGenerate these sections with the exact emoji headers:\n\n🍽️ NUTRITION PLAN\nSpecific meal plan for tomorrow targeting ${user.daily_calorie_target} kcal. Include breakfast, lunch, dinner, snack with portions.\n\n🏋️ WORKOUT PLAN\nSpecific workout for tomorrow matching energy level ${log.energy_level||5}/10 and goal ${user.goal}.\n\n🔄 HEALTHY SUBSTITUTES\n3 specific swaps from today's food. Format: [Original] → [Substitute] — [Why]\n\n📈 PROGRESS SNAPSHOT\n2 honest, encouraging sentences about their trend.\n\n💬 DAILY MOTIVATION\nOne personalized sentence for their situation today.`;\n\nreturn [{ json: {\n  systemPrompt,\n  userPrompt,\n  telegramId: user.telegram_id,\n  userId: user.id,\n  userName: user.first_name\n} }];"
       },
-      "id": "node-get-last-rec",
-      "name": "Get Last Recommendation",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [500, 500],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "url": "file:///home/node/fitbuddy/config/prompts/base-system.txt",
-        "options": {}
-      },
-      "id": "node-read-system-prompt",
-      "name": "Read System Prompt",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [700, 200]
-    },
-    {
-      "parameters": {
-        "url": "file:///home/node/fitbuddy/config/prompts/base-analysis.txt",
-        "options": {}
-      },
-      "id": "node-read-base-analysis",
-      "name": "Read Base Analysis Prompt",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [700, 350]
-    },
-    {
-      "parameters": {
-        "url": "file:///home/node/fitbuddy/config/feature-registry.json",
-        "options": {}
-      },
-      "id": "node-read-registry",
-      "name": "Read Feature Registry",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [700, 500]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Compose full AI prompt by merging base + enabled feature fragments\nconst user = $('Get User Profile').item.json;\nconst todayLog = $('Get Today Log').item.json;\nconst sevenDayLogs = $('Get 7-Day Trend').all().map(i => i.json);\nconst lastRec = $('Get Last Recommendation').item.json;\nconst systemPromptRaw = $('Read System Prompt').item.json.data || $('Read System Prompt').item.json;\nconst baseAnalysisRaw = $('Read Base Analysis Prompt').item.json.data || $('Read Base Analysis Prompt').item.json;\nconst registryRaw = $('Read Feature Registry').item.json;\n\nconst systemPrompt = typeof systemPromptRaw === 'string' ? systemPromptRaw : JSON.stringify(systemPromptRaw);\nlet baseAnalysis = typeof baseAnalysisRaw === 'string' ? baseAnalysisRaw : JSON.stringify(baseAnalysisRaw);\nconst registry = typeof registryRaw === 'string' ? JSON.parse(registryRaw) : registryRaw;\n\n// Build 7-day summary text\nconst sevenDaySummary = sevenDayLogs.map(d => {\n  const workoutIcon = d.workout_done ? '✅' : '❌';\n  return `  ${d.log_date}: ${d.calories_consumed || 0} kcal | Sleep ${d.sleep_hours || '?'}h | Energy ${d.energy_level || '?'}/10 | Workout ${workoutIcon} | Steps ${d.steps || 0}`;\n}).join('\\n') || 'No previous data yet.';\n\nconst lastRecSummary = lastRec\n  ? `Nutrition: ${(lastRec.nutrition_plan || '').substring(0, 200)}...\\nWorkout: ${(lastRec.workout_plan || '').substring(0, 200)}...`\n  : 'No previous recommendation — this is the first check-in.';\n\n// Substitute base prompt variables\nconst substitutions = {\n  '{name}': user.first_name || 'Friend',\n  '{age}': user.age || 'Unknown',\n  '{gender}': user.gender || 'Unknown',\n  '{weight_kg}': user.weight_kg || 'Unknown',\n  '{height_cm}': user.height_cm || 'Unknown',\n  '{goal}': user.goal || 'maintenance',\n  '{daily_calorie_target}': user.daily_calorie_target || 2000,\n  '{activity_level}': user.activity_level || 'moderate',\n  '{log_date}': todayLog.log_date || new Date().toISOString().split('T')[0],\n  '{sleep_hours}': todayLog.sleep_hours || 0,\n  '{energy_level}': todayLog.energy_level || 5,\n  '{mood}': todayLog.mood || 'okay',\n  '{food_description}': todayLog.food_description || 'Not provided',\n  '{calories_consumed}': todayLog.calories_consumed || 0,\n  '{protein_g}': todayLog.protein_g || 0,\n  '{carbs_g}': todayLog.carbs_g || 0,\n  '{fat_g}': todayLog.fat_g || 0,\n  '{workout_description}': todayLog.workout_description || 'Rest day',\n  '{steps}': todayLog.steps || 0,\n  '{water_ml}': todayLog.water_ml || 0,\n  '{seven_day_summary}': sevenDaySummary,\n  '{last_recommendation_summary}': lastRecSummary\n};\n\nfor (const [key, val] of Object.entries(substitutions)) {\n  baseAnalysis = baseAnalysis.split(key).join(String(val));\n}\n\n// Append enabled feature prompt fragments\nconst enabledFeatures = (registry.features || []).filter(f => f.enabled && f.prompt_fragment);\nlet fragmentsToLoad = [];\nfor (const feature of enabledFeatures) {\n  fragmentsToLoad.push({\n    featureId: feature.id,\n    fragmentPath: feature.prompt_fragment\n  });\n}\n\n// Return data needed for next node (fragment loading)\nreturn [{ json: {\n  systemPrompt,\n  userPrompt: baseAnalysis,\n  fragmentsToLoad,\n  enabledFeatures: enabledFeatures.map(f => f.id),\n  telegramId: user.telegram_id,\n  userId: user.id,\n  userName: user.first_name\n} }];"
-      },
-      "id": "node-compose-base",
-      "name": "Compose Base Prompt",
+      "id": "compose-prompt",
+      "name": "Compose Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 350]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Load each feature's prompt fragment and append to user prompt\n// In production, each fragment is fetched via HTTP; here we read inline\nconst { systemPrompt, userPrompt, fragmentsToLoad, enabledFeatures, telegramId, userId, userName } = $json;\n\n// Build combined prompt with all feature fragments appended\nlet combinedPrompt = userPrompt;\n\n// Fragment content is appended; in production this node iterates HTTP calls\n// The actual file reads happen via HTTP Request nodes in the feature loop\n// For the engine to work standalone, we include a fallback that reads known fragments\nconst fragmentPaths = {\n  'food_image_analysis': '/home/node/fitbuddy/config/prompts/feature-food-image.txt',\n  'supplement_advisor':  '/home/node/fitbuddy/config/prompts/feature-supplements.txt',\n  'restaurant_finder':   '/home/node/fitbuddy/config/prompts/feature-restaurants.txt',\n  'mindset_coach':       '/home/node/fitbuddy/config/prompts/feature-mindset.txt'\n};\n\n// Fragments will be fetched in the HTTP loop nodes that follow\n// Pass the data forward\nreturn [{ json: {\n  systemPrompt,\n  userPrompt: combinedPrompt,\n  fragmentsToLoad,\n  enabledFeatures,\n  telegramId,\n  userId,\n  userName,\n  fragmentPaths\n} }];"
-      },
-      "id": "node-load-fragments",
-      "name": "Load Feature Fragments",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1100, 350]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Final prompt assembly before AI call\nconst data = $json;\n\n// Any fragment content that was loaded gets appended here\n// The system reads feature registry at runtime — new features auto-appear\nconst finalSystemPrompt = data.systemPrompt;\nconst finalUserPrompt = data.userPrompt + '\\n\\n' +\n  '---\\n' +\n  'Provide a thorough, specific response covering ALL sections above. ' +\n  'Format each section header exactly as shown with its emoji. ' +\n  'Keep total response under 3500 characters for Telegram.';\n\nreturn [{ json: {\n  systemPrompt: finalSystemPrompt,\n  userPrompt: finalUserPrompt,\n  telegramId: data.telegramId,\n  userId: data.userId,\n  userName: data.userName,\n  enabledFeatures: data.enabledFeatures\n} }];"
-      },
-      "id": "node-finalize-prompt",
-      "name": "Finalize Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1300, 350]
+      "position": [700, 300]
     },
     {
       "parameters": {
@@ -165,193 +71,93 @@
         "model": "gpt-4o",
         "messages": {
           "values": [
-            {
-              "role": "system",
-              "content": "={{ $json.systemPrompt }}"
-            },
-            {
-              "role": "user",
-              "content": "={{ $json.userPrompt }}"
-            }
+            { "role": "system", "content": "={{ $json.systemPrompt }}" },
+            { "role": "user", "content": "={{ $json.userPrompt }}" }
           ]
         },
-        "options": {
-          "temperature": 0.7,
-          "maxTokens": 1500
-        }
+        "options": { "temperature": 0.7, "maxTokens": 1500 }
       },
-      "id": "node-openai-call",
+      "id": "openai-call",
       "name": "GPT-4o Analysis",
       "type": "n8n-nodes-base.openAi",
       "typeVersion": 1,
-      "position": [1500, 350],
-      "credentials": {
-        "openAiApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy OpenAI"
-        }
-      }
+      "position": [900, 300],
+      "credentials": { "openAiApi": { "id": "REPLACE_OPENAI_CRED_ID", "name": "FitBuddy OpenAI" } }
     },
     {
       "parameters": {
-        "jsCode": "// Parse GPT response into structured sections\nconst aiResponse = $json.message?.content || $json.choices?.[0]?.message?.content || '';\n\n// Split on emoji section headers\nconst sectionMarkers = [\n  { key: 'nutrition_plan',      marker: '🍽️' },\n  { key: 'workout_plan',        marker: '🏋️' },\n  { key: 'substitutes',         marker: '🔄' },\n  { key: 'progress_snapshot',   marker: '📈' },\n  { key: 'motivational_message',marker: '💬' },\n  { key: 'supplement_advice',   marker: '💊' },\n  { key: 'restaurant_advice',   marker: '🍴' },\n  { key: 'mindset_coaching',    marker: '🧠' },\n  { key: 'food_photo_insight',  marker: '📸' }\n];\n\nconst sections = {};\nlet remaining = aiResponse;\n\nfor (let i = 0; i < sectionMarkers.length; i++) {\n  const { key, marker } = sectionMarkers[i];\n  const nextMarkers = sectionMarkers.slice(i + 1).map(m => m.marker);\n  \n  const startIdx = remaining.indexOf(marker);\n  if (startIdx === -1) continue;\n  \n  let endIdx = remaining.length;\n  for (const nextMarker of nextMarkers) {\n    const nextIdx = remaining.indexOf(nextMarker, startIdx + 1);\n    if (nextIdx !== -1 && nextIdx < endIdx) {\n      endIdx = nextIdx;\n    }\n  }\n  \n  sections[key] = remaining.substring(startIdx, endIdx).trim();\n}\n\n// Feature sections as JSONB\nconst featureSections = {};\nconst featureKeys = ['supplement_advice', 'restaurant_advice', 'mindset_coaching', 'food_photo_insight'];\nfor (const key of featureKeys) {\n  if (sections[key]) featureSections[key] = sections[key];\n}\n\nconst prevData = $('Finalize Prompt').item.json;\n\nreturn [{ json: {\n  fullResponse: aiResponse,\n  nutritionPlan: sections.nutrition_plan || '',\n  workoutPlan: sections.workout_plan || '',\n  substitutes: sections.substitutes || '',\n  progressSnapshot: sections.progress_snapshot || '',\n  motivationalMessage: sections.motivational_message || '',\n  featureSections,\n  telegramId: prevData.telegramId,\n  userId: prevData.userId,\n  userName: prevData.userName,\n  enabledFeatures: prevData.enabledFeatures\n} }];"
+        "jsCode": "const aiResponse = $json.message?.content || $json.choices?.[0]?.message?.content || 'No response generated.';\nconst prev = $('Compose Prompt').item.json;\nreturn [{ json: { aiResponse, telegramId: prev.telegramId, userId: prev.userId } }];"
       },
-      "id": "node-parse-response",
-      "name": "Parse AI Response",
+      "id": "parse-response",
+      "name": "Parse Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1700, 350]
+      "position": [1100, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO ai_recommendations\n  (user_id, recommendation_date, full_response, nutrition_plan, workout_plan,\n   substitutes, progress_snapshot, motivational_message, feature_sections, model_used, prompt_version)\nVALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8::jsonb, 'gpt-4o', '1.0')\nRETURNING id",
-        "additionalFields": {
-          "queryParams": "={{ [\n  $json.userId,\n  $json.fullResponse,\n  $json.nutritionPlan,\n  $json.workoutPlan,\n  $json.substitutes,\n  $json.progressSnapshot,\n  $json.motivationalMessage,\n  JSON.stringify($json.featureSections)\n].join(',') }}"
-        }
+        "query": "INSERT INTO ai_recommendations (user_id, recommendation_date, full_response, model_used) VALUES ($1, CURRENT_DATE, $2, 'gpt-4o') ON CONFLICT DO NOTHING",
+        "additionalFields": { "queryParams": "={{ [$json.userId, $json.aiResponse].join(',') }}" }
       },
-      "id": "node-save-rec",
+      "id": "save-rec",
       "name": "Save Recommendation",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [1900, 350],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Parse AI Response').item.json.telegramId }}",
-        "text": "={{ $('Parse AI Response').item.json.fullResponse }}",
-        "additionalFields": { "parse_mode": "HTML" }
-      },
-      "id": "node-send-report",
-      "name": "Send AI Report",
-      "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [2100, 300],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Build dynamic action keyboard from enabled features\nconst enabledFeatures = $('Parse AI Response').item.json.enabledFeatures || [];\n\nconst featureButtons = {\n  food_image_analysis: { text: '📸 Analyze Food Photo', callback_data: '/analyze' },\n  supplement_advisor:  { text: '💊 Supplement Advice',  callback_data: '/supplements' },\n  restaurant_finder:   { text: '🍴 Find Restaurants',   callback_data: '/restaurants' },\n  challenge_system:    { text: '🏆 Challenges',          callback_data: '/challenges' },\n  mindset_coach:       { text: '🧠 Mindset Coach',       callback_data: '/mindset' }\n};\n\nconst keyboard = [];\nfor (const featureId of enabledFeatures) {\n  if (featureButtons[featureId]) {\n    keyboard.push([featureButtons[featureId]]);\n  }\n}\n\nkeyboard.push([{ text: '📊 Weekly Progress', callback_data: '/progress' }]);\n\nreturn [{ json: {\n  replyMarkup: JSON.stringify({ inline_keyboard: keyboard }),\n  telegramId: $('Parse AI Response').item.json.telegramId\n} }];"
-      },
-      "id": "node-build-keyboard",
-      "name": "Build Action Keyboard",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2100, 450]
+      "position": [1300, 250],
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
         "chatId": "={{ $json.telegramId }}",
-        "text": "What would you like to do next?",
-        "additionalFields": {
-          "parse_mode": "HTML",
-          "reply_markup": "={{ $json.replyMarkup }}"
-        }
+        "text": "={{ $json.aiResponse }}",
+        "additionalFields": { "parse_mode": "HTML" }
       },
-      "id": "node-send-keyboard",
-      "name": "Send Action Keyboard",
+      "id": "send-report",
+      "name": "Send Report",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [2300, 450],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
+      "position": [1300, 400],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO feature_events (user_id, feature_id, event_type, payload)\nVALUES ($1, 'core', 'ai_report_sent', $2::jsonb)",
+        "chatId": "={{ $('Parse Response').item.json.telegramId }}",
+        "text": "What would you like to do next?",
         "additionalFields": {
-          "queryParams": "={{ [\n  $('Parse AI Response').item.json.userId,\n  JSON.stringify({ enabled_features: $('Parse AI Response').item.json.enabledFeatures })\n].join(',') }}"
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"📸 Analyze Food Photo\",\"callback_data\":\"/analyze\"},{\"text\":\"💊 Supplements\",\"callback_data\":\"/supplements\"}],[{\"text\":\"📊 Weekly Progress\",\"callback_data\":\"/progress\"}]]}"
         }
       },
-      "id": "node-log-event",
-      "name": "Log Feature Event",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [2300, 300],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "id": "send-keyboard",
+      "name": "Send Action Keyboard",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1500, 400],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     }
   ],
   "connections": {
-    "Webhook Trigger": {
-      "main": [[{ "node": "Get User Profile", "type": "main", "index": 0 }]]
-    },
-    "Get User Profile": {
+    "Webhook Trigger": { "main": [[{ "node": "Get User", "type": "main", "index": 0 }]] },
+    "Get User": {
       "main": [
         [{ "node": "Get Today Log", "type": "main", "index": 0 }],
-        [{ "node": "Get 7-Day Trend", "type": "main", "index": 0 }],
-        [{ "node": "Get Last Recommendation", "type": "main", "index": 0 }]
+        [{ "node": "Get 7-Day Trend", "type": "main", "index": 0 }]
       ]
     },
-    "Get Today Log": {
-      "main": [[{ "node": "Read System Prompt", "type": "main", "index": 0 }]]
-    },
-    "Get 7-Day Trend": {
-      "main": [[{ "node": "Read Base Analysis Prompt", "type": "main", "index": 0 }]]
-    },
-    "Get Last Recommendation": {
-      "main": [[{ "node": "Read Feature Registry", "type": "main", "index": 0 }]]
-    },
-    "Read System Prompt": {
-      "main": [[{ "node": "Compose Base Prompt", "type": "main", "index": 0 }]]
-    },
-    "Read Base Analysis Prompt": {
-      "main": [[{ "node": "Compose Base Prompt", "type": "main", "index": 0 }]]
-    },
-    "Read Feature Registry": {
-      "main": [[{ "node": "Compose Base Prompt", "type": "main", "index": 0 }]]
-    },
-    "Compose Base Prompt": {
-      "main": [[{ "node": "Load Feature Fragments", "type": "main", "index": 0 }]]
-    },
-    "Load Feature Fragments": {
-      "main": [[{ "node": "Finalize Prompt", "type": "main", "index": 0 }]]
-    },
-    "Finalize Prompt": {
-      "main": [[{ "node": "GPT-4o Analysis", "type": "main", "index": 0 }]]
-    },
-    "GPT-4o Analysis": {
-      "main": [[{ "node": "Parse AI Response", "type": "main", "index": 0 }]]
-    },
-    "Parse AI Response": {
-      "main": [[{ "node": "Save Recommendation", "type": "main", "index": 0 }]]
-    },
-    "Save Recommendation": {
+    "Get Today Log": { "main": [[{ "node": "Compose Prompt", "type": "main", "index": 0 }]] },
+    "Get 7-Day Trend": { "main": [[{ "node": "Compose Prompt", "type": "main", "index": 0 }]] },
+    "Compose Prompt": { "main": [[{ "node": "GPT-4o Analysis", "type": "main", "index": 0 }]] },
+    "GPT-4o Analysis": { "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]] },
+    "Parse Response": {
       "main": [
-        [{ "node": "Send AI Report", "type": "main", "index": 0 }],
-        [{ "node": "Build Action Keyboard", "type": "main", "index": 0 }]
+        [{ "node": "Save Recommendation", "type": "main", "index": 0 }],
+        [{ "node": "Send Report", "type": "main", "index": 0 }]
       ]
     },
-    "Send AI Report": {
-      "main": [[{ "node": "Log Feature Event", "type": "main", "index": 0 }]]
-    },
-    "Build Action Keyboard": {
-      "main": [[{ "node": "Send Action Keyboard", "type": "main", "index": 0 }]]
-    }
+    "Send Report": { "main": [[{ "node": "Send Action Keyboard", "type": "main", "index": 0 }]] }
   },
   "active": true,
   "settings": { "executionOrder": "v1" },
-  "versionId": "03-ai-engine-v1",
-  "id": "3",
-  "meta": { "instanceId": "fitbuddy" }
+  "id": "3"
 }
