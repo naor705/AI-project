@@ -40,7 +40,7 @@ services:
       - N8N_PORT=${N8N_PORT:-5050}
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
       - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5050}
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-local_dev_key_change_before_production}
       - EXECUTIONS_PROCESS=main
       - GENERIC_TIMEZONE=${TIMEZONE:-UTC}
       - N8N_LOG_LEVEL=info
