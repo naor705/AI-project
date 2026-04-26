@@ -61,9 +61,10 @@ cat > "$TMPFILE" <<CREDJSON
 CREDJSON
 
 # ── Import via n8n CLI inside the container ───────────────────────────────────
-docker cp "$TMPFILE" fitbuddy_n8n:/tmp/fitbuddy_creds.json
-docker exec fitbuddy_n8n n8n import:credentials --input=/tmp/fitbuddy_creds.json
-docker exec fitbuddy_n8n rm /tmp/fitbuddy_creds.json
+# MSYS_NO_PATHCONV=1 prevents Git Bash on Windows from translating /tmp/... to a Windows path
+MSYS_NO_PATHCONV=1 docker cp "$TMPFILE" fitbuddy_n8n:/tmp/fitbuddy_creds.json
+MSYS_NO_PATHCONV=1 docker exec fitbuddy_n8n n8n import:credentials --input=/tmp/fitbuddy_creds.json
+MSYS_NO_PATHCONV=1 docker exec fitbuddy_n8n rm /tmp/fitbuddy_creds.json
 rm -f "$TMPFILE"
 
 echo ""
