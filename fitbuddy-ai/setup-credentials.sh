@@ -34,7 +34,7 @@ fi
 echo "Injecting credentials into n8n..."
 
 # ── Write a temp credentials file ────────────────────────────────────────────
-TMPFILE=$(mktemp /tmp/fitbuddy_creds_XXXXXX.json)
+TMPFILE="./fitbuddy_creds_tmp.json"
 cat > "$TMPFILE" <<CREDJSON
 [
   {
