@@ -38,6 +38,7 @@ TMPFILE="./fitbuddy_creds_tmp.json"
 cat > "$TMPFILE" <<CREDJSON
 [
   {
+    "id": "fitbuddy-telegram-1",
     "name": "Telegram Bot",
     "type": "telegramApi",
     "data": {
@@ -45,6 +46,7 @@ cat > "$TMPFILE" <<CREDJSON
     }
   },
   {
+    "id": "fitbuddy-postgres-1",
     "name": "FitBuddy DB",
     "type": "postgres",
     "data": {
