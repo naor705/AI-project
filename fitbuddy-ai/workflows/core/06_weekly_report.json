@@ -36,7 +36,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [350, 320],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": { "batchSize": 1, "options": {} },
@@ -57,7 +57,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [750, 320],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -83,28 +83,24 @@
     },
     {
       "parameters": {
-        "resource": "chat",
-        "operation": "complete",
-        "model": "gpt-4o",
-        "messages": {
-          "values": [
-            { "role": "system", "content": "You are FitBuddy AI, a warm encouraging fitness coach. Write a 3-4 sentence weekly summary. Be specific to the numbers. Format for Telegram HTML." },
-            { "role": "user", "content": "={{ `Weekly summary for ${$json.firstName}:\\n- Days logged: ${$json.n}/7\\n- Avg calories: ${$json.avgCal} kcal (target: ${$json.target})\\n- Adherence: ${$json.adherence}%\\n- Avg sleep: ${$json.avgSleep}h\\n- Avg energy: ${$json.avgEnergy}/10\\n- Avg steps: ${$json.avgSteps}\\n- Workout days: ${$json.workoutDays}/7\\n- Goal: ${$json.goal}` }}" }
-          ]
-        },
-        "options": { "maxTokens": 300 }
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/v1/chat/completions",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'llama3', messages: [{ role: 'system', content: 'You are FitBuddy AI, a warm encouraging fitness coach. Write a 3-4 sentence weekly summary. Be specific to the numbers. Format for Telegram HTML.' }, { role: 'user', content: `Weekly summary for ${$json.firstName}:\\n- Days logged: ${$json.n}/7\\n- Avg calories: ${$json.avgCal} kcal (target: ${$json.target})\\n- Adherence: ${$json.adherence}%\\n- Avg sleep: ${$json.avgSleep}h\\n- Avg energy: ${$json.avgEnergy}/10\\n- Avg steps: ${$json.avgSteps}\\n- Workout days: ${$json.workoutDays}/7\\n- Goal: ${$json.goal}` }], temperature: 0.7, max_tokens: 300, stream: false } }}",
+        "options": { "timeout": 120000 }
       },
       "id": "ai-narrative",
       "name": "AI Narrative",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1,
-      "position": [1350, 200],
-      "credentials": { "openAiApi": { "id": "REPLACE_OPENAI_CRED_ID", "name": "FitBuddy OpenAI" } }
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1350, 200]
     },
     {
       "parameters": {
         "chatId": "={{ $('Compute Stats').item.json.telegramId }}",
-        "text": "={{ `📅 <b>Weekly Report — ${$('Compute Stats').item.json.firstName}</b>\\n\\n📊 <b>This Week:</b>\\n📝 Days logged: ${$('Compute Stats').item.json.n}/7\\n🔥 Avg calories: ${$('Compute Stats').item.json.avgCal} kcal\\n🎯 Calorie adherence: ${$('Compute Stats').item.json.adherence}%\\n😴 Avg sleep: ${$('Compute Stats').item.json.avgSleep}h\\n⚡ Avg energy: ${$('Compute Stats').item.json.avgEnergy}/10\\n👟 Avg steps: ${$('Compute Stats').item.json.avgSteps}\\n🏋️ Workout days: ${$('Compute Stats').item.json.workoutDays}/7\\n\\n🤖 <b>AI Summary:</b>\\n${$json.message?.content || ''}` }}",
+        "text": "={{ `📅 <b>Weekly Report — ${$('Compute Stats').item.json.firstName}</b>\\n\\n📊 <b>This Week:</b>\\n📝 Days logged: ${$('Compute Stats').item.json.n}/7\\n🔥 Avg calories: ${$('Compute Stats').item.json.avgCal} kcal\\n🎯 Calorie adherence: ${$('Compute Stats').item.json.adherence}%\\n😴 Avg sleep: ${$('Compute Stats').item.json.avgSleep}h\\n⚡ Avg energy: ${$('Compute Stats').item.json.avgEnergy}/10\\n👟 Avg steps: ${$('Compute Stats').item.json.avgSteps}\\n🏋️ Workout days: ${$('Compute Stats').item.json.workoutDays}/7\\n\\n🤖 <b>AI Summary:</b>\\n${$json.choices?.[0]?.message?.content || ''}` }}",
         "additionalFields": { "parse_mode": "HTML" }
       },
       "id": "send-report",
@@ -112,7 +108,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1550, 300],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -125,7 +121,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1750, 300],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     }
   ],
   "connections": {

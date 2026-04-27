@@ -26,7 +26,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [300, 300],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -39,7 +39,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [500, 200],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -52,7 +52,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [500, 400],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -66,27 +66,25 @@
     },
     {
       "parameters": {
-        "resource": "chat",
-        "operation": "complete",
-        "model": "gpt-4o",
-        "messages": {
-          "values": [
-            { "role": "system", "content": "={{ $json.systemPrompt }}" },
-            { "role": "user", "content": "={{ $json.userPrompt }}" }
-          ]
-        },
-        "options": { "temperature": 0.7, "maxTokens": 1500 }
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/v1/chat/completions",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'llama3', messages: [{ role: 'system', content: $json.systemPrompt }, { role: 'user', content: $json.userPrompt }], temperature: 0.7, max_tokens: 1500, stream: false } }}",
+        "options": {
+          "timeout": 120000
+        }
       },
-      "id": "openai-call",
-      "name": "GPT-4o Analysis",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1,
-      "position": [900, 300],
-      "credentials": { "openAiApi": { "id": "REPLACE_OPENAI_CRED_ID", "name": "FitBuddy OpenAI" } }
+      "id": "ollama-call",
+      "name": "Llama3 Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300]
     },
     {
       "parameters": {
-        "jsCode": "const aiResponse = $json.message?.content || $json.choices?.[0]?.message?.content || 'No response generated.';\nconst prev = $('Compose Prompt').item.json;\nreturn [{ json: { aiResponse, telegramId: prev.telegramId, userId: prev.userId } }];"
+        "jsCode": "const aiResponse = $json.choices?.[0]?.message?.content || 'No response generated.';\nconst prev = $('Compose Prompt').item.json;\nreturn [{ json: { aiResponse, telegramId: prev.telegramId, userId: prev.userId } }];"
       },
       "id": "parse-response",
       "name": "Parse Response",
@@ -97,7 +95,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO ai_recommendations (user_id, recommendation_date, full_response, model_used) VALUES ($1, CURRENT_DATE, $2, 'gpt-4o') ON CONFLICT DO NOTHING",
+        "query": "INSERT INTO ai_recommendations (user_id, recommendation_date, full_response, model_used) VALUES ($1, CURRENT_DATE, $2, 'llama3') ON CONFLICT DO NOTHING",
         "additionalFields": { "queryParams": "={{ [$json.userId, $json.aiResponse].join(',') }}" }
       },
       "id": "save-rec",
@@ -105,7 +103,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1300, 250],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -118,7 +116,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 400],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -134,7 +132,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1500, 400],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     }
   ],
   "connections": {
@@ -147,8 +145,8 @@
     },
     "Get Today Log": { "main": [[{ "node": "Compose Prompt", "type": "main", "index": 0 }]] },
     "Get 7-Day Trend": { "main": [[{ "node": "Compose Prompt", "type": "main", "index": 0 }]] },
-    "Compose Prompt": { "main": [[{ "node": "GPT-4o Analysis", "type": "main", "index": 0 }]] },
-    "GPT-4o Analysis": { "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]] },
+    "Compose Prompt": { "main": [[{ "node": "Llama3 Analysis", "type": "main", "index": 0 }]] },
+    "Llama3 Analysis": { "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]] },
     "Parse Response": {
       "main": [
         [{ "node": "Save Recommendation", "type": "main", "index": 0 }],

@@ -12,7 +12,7 @@
       "typeVersion": 1,
       "position": [100, 300],
       "webhookId": "fitbuddy-onboarding",
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -25,7 +25,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [300, 300],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -50,7 +50,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [700, 150],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -63,7 +63,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [700, 400],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -76,7 +76,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [900, 400],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -112,7 +112,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 100],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -125,7 +125,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 220],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -138,7 +138,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 340],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -151,7 +151,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 460],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -164,7 +164,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 580],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -177,7 +177,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 700],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -190,7 +190,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1300, 820],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
@@ -213,7 +213,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1700, 500],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -238,7 +238,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [2100, 400],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -251,7 +251,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [2300, 400],
-      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
+      "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
@@ -264,7 +264,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [2500, 400],
-      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     }
   ],
   "connections": {
