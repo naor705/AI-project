@@ -3,20 +3,21 @@
   "nodes": [
     {
       "parameters": {
-        "updates": ["message", "callback_query"],
-        "additionalFields": {}
+        "httpMethod": "POST",
+        "path": "fitbuddy-command-router",
+        "responseMode": "onReceived",
+        "options": {}
       },
       "id": "tg-trigger",
-      "name": "Telegram Trigger",
-      "type": "n8n-nodes-base.telegramTrigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [100, 300],
-      "webhookId": "fitbuddy-command-router",
-      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
+      "webhookId": "fitbuddy-command-router"
     },
     {
       "parameters": {
-        "jsCode": "const trigger = $json;\nconst message = trigger.message || {};\nconst cb = trigger.callback_query || {};\nconst text = (message.text || cb.data || '').trim();\nconst telegramId = message.from?.id || cb.from?.id;\nconst firstName = message.from?.first_name || cb.from?.first_name || 'there';\nconst username = message.from?.username || cb.from?.username || '';\n\nif (!telegramId || !text) return [];\n\nconst isCommand = text.startsWith('/');\nconst command = isCommand ? text.split(' ')[0].toLowerCase() : null;\n\nreturn [{ json: { command, text, telegramId: String(telegramId), firstName, username, isCommand } }];"
+        "jsCode": "const trigger = $json.body || $json;\nconst message = trigger.message || {};\nconst cb = trigger.callback_query || {};\nconst text = (message.text || cb.data || '').trim();\nconst telegramId = message.from?.id || cb.from?.id;\nconst firstName = message.from?.first_name || cb.from?.first_name || 'there';\nconst username = message.from?.username || cb.from?.username || '';\n\nif (!telegramId || !text) return [];\n\nconst isCommand = text.startsWith('/');\nconst command = isCommand ? text.split(' ')[0].toLowerCase() : null;\n\nreturn [{ json: { command, text, telegramId: String(telegramId), firstName, username, isCommand } }];"
       },
       "id": "extract-info",
       "name": "Extract Info",
@@ -144,7 +145,7 @@
     }
   ],
   "connections": {
-    "Telegram Trigger": { "main": [[{ "node": "Extract Info", "type": "main", "index": 0 }]] },
+    "Webhook Trigger": { "main": [[{ "node": "Extract Info", "type": "main", "index": 0 }]] },
     "Extract Info": { "main": [[{ "node": "Verify User", "type": "main", "index": 0 }]] },
     "Verify User": { "main": [[{ "node": "Determine Route", "type": "main", "index": 0 }]] },
     "Determine Route": { "main": [[{ "node": "Route Switch", "type": "main", "index": 0 }]] },
