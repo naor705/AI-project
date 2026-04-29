@@ -16,92 +16,76 @@
     },
     {
       "parameters": {
-        "jsCode": "const trigger = $json;\nconst message = trigger.message || {};\nconst cb = trigger.callback_query || {};\nconst text = message.text || cb.data || '';\nconst telegramId = message.from?.id || cb.from?.id;\nconst firstName = message.from?.first_name || cb.from?.first_name || 'there';\nif (!text.startsWith('/')) return [{ json: { skip: true } }];\nconst command = text.split(' ')[0].toLowerCase();\nreturn [{ json: { command, telegramId, firstName, skip: false } }];"
+        "jsCode": "const trigger = $json;\nconst message = trigger.message || {};\nconst cb = trigger.callback_query || {};\nconst text = (message.text || cb.data || '').trim();\nconst telegramId = message.from?.id || cb.from?.id;\nconst firstName = message.from?.first_name || cb.from?.first_name || 'there';\nconst username = message.from?.username || cb.from?.username || '';\n\nif (!telegramId || !text) return [];\n\nconst isCommand = text.startsWith('/');\nconst command = isCommand ? text.split(' ')[0].toLowerCase() : null;\n\nreturn [{ json: { command, text, telegramId: String(telegramId), firstName, username, isCommand } }];"
       },
-      "id": "extract-cmd",
-      "name": "Extract Command",
+      "id": "extract-info",
+      "name": "Extract Info",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [300, 300]
     },
     {
       "parameters": {
-        "conditions": {
-          "boolean": [{ "value1": "={{ $json.skip }}", "value2": true }]
-        }
-      },
-      "id": "if-skip",
-      "name": "Is Command?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [500, 300]
-    },
-    {
-      "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, onboarding_complete, first_name FROM users WHERE telegram_id=$1",
-        "additionalFields": { "queryParams": "={{ $('Extract Command').item.json.telegramId }}" }
+        "query": "SELECT u.id, COALESCE(u.onboarding_complete, false) as onboarding_complete, u.first_name FROM (SELECT $1::bigint as telegram_id) t LEFT JOIN users u ON u.telegram_id = t.telegram_id",
+        "additionalFields": { "queryParams": "={{ $json.telegramId }}" }
       },
       "id": "verify-user",
       "name": "Verify User",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [700, 400],
+      "position": [500, 300],
       "credentials": { "postgres": { "id": "fitbuddy-postgres-1", "name": "FitBuddy DB" } }
     },
     {
       "parameters": {
-        "conditions": {
-          "boolean": [{ "value1": "={{ $json.onboarding_complete }}", "value2": true }]
-        }
+        "jsCode": "const extracted = $('Extract Info').item.json;\nconst user = $json;\n\nconst { command, text, telegramId, firstName, username, isCommand } = extracted;\n\nif (!user.id || !user.onboarding_complete) {\n  return [{ json: { route: 'onboarding', telegramId, firstName, username, text } }];\n}\n\nif (!isCommand) {\n  return [{ json: { route: 'help', telegramId } }];\n}\n\nif (command === '/start') {\n  return [{ json: { route: 'welcome_back', telegramId, firstName: user.first_name } }];\n}\n\nif (command === '/help') {\n  return [{ json: { route: 'help', telegramId } }];\n}\n\nconst routes = { '/checkin': '2', '/analyze': '7', '/supplements': '8', '/progress': '6' };\nif (routes[command]) {\n  return [{ json: { route: 'dispatch', workflowId: routes[command], telegramId } }];\n}\n\nreturn [{ json: { route: 'unknown', command, telegramId } }];"
       },
-      "id": "if-onboarded",
-      "name": "Onboarded?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [900, 400]
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Extract Command').item.json.telegramId }}",
-        "text": "👋 Let's get you set up first!\n\nType /start to begin.",
-        "additionalFields": { "parse_mode": "HTML" }
-      },
-      "id": "redirect-start",
-      "name": "Redirect to Start",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
-      "position": [1100, 250],
-      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
-    },
-    {
-      "parameters": {
-        "jsCode": "const command = $('Extract Command').item.json.command;\nconst telegramId = $('Extract Command').item.json.telegramId;\n\nconst routes = {\n  '/checkin':     { workflowId: '2' },\n  '/analyze':     { workflowId: '7', feature: 'food_image_analysis' },\n  '/supplements': { workflowId: '8', feature: 'supplement_advisor' },\n  '/progress':    { workflowId: '6' },\n  '/help':        { action: 'help' }\n};\n\nconst match = routes[command];\nif (!match) return [{ json: { action: 'unknown', command, telegramId } }];\nif (match.action === 'help') return [{ json: { action: 'help', telegramId } }];\nreturn [{ json: { action: 'dispatch', workflowId: match.workflowId, telegramId, command } }];"
-      },
-      "id": "match-cmd",
-      "name": "Match Command",
+      "id": "determine-route",
+      "name": "Determine Route",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1100, 500]
+      "position": [700, 300]
     },
     {
       "parameters": {
         "dataType": "string",
-        "value1": "={{ $json.action }}",
+        "value1": "={{ $json.route }}",
         "rules": {
           "rules": [
-            { "value2": "dispatch", "output": 0 },
-            { "value2": "help", "output": 1 },
-            { "value2": "unknown", "output": 2 }
+            { "value2": "onboarding", "output": 0 },
+            { "value2": "dispatch", "output": 1 },
+            { "value2": "help", "output": 2 },
+            { "value2": "welcome_back", "output": 3 },
+            { "value2": "unknown", "output": 4 }
           ]
         },
-        "fallbackOutput": 2
+        "fallbackOutput": 4
       },
-      "id": "route-action",
-      "name": "Route Action",
+      "id": "route-switch",
+      "name": "Route Switch",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
-      "position": [1300, 500]
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "1",
+        "options": {},
+        "workflowInputs": {
+          "values": [
+            { "name": "telegram_id", "value": "={{ $json.telegramId }}" },
+            { "name": "first_name", "value": "={{ $json.firstName }}" },
+            { "name": "username", "value": "={{ $json.username }}" },
+            { "name": "message_text", "value": "={{ $json.text }}" }
+          ]
+        }
+      },
+      "id": "exec-onboarding",
+      "name": "Execute Onboarding",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1100, 100]
     },
     {
       "parameters": {
@@ -117,7 +101,7 @@
       "name": "Execute Workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
-      "position": [1500, 380]
+      "position": [1100, 260]
     },
     {
       "parameters": {
@@ -129,44 +113,47 @@
       "name": "Send Help",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1500, 520],
+      "position": [1100, 420],
       "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     },
     {
       "parameters": {
         "chatId": "={{ $json.telegramId }}",
-        "text": "❓ Unknown command: <code>{{ $json.command }}</code>\n\nType /help to see available commands.",
+        "text": "={{ 'Welcome back, ' + $json.firstName + '! 💪\\n\\nUse /checkin to log your day or /help for all commands.' }}",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "send-welcome-back",
+      "name": "Send Welcome Back",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1100, 580],
+      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramId }}",
+        "text": "={{ '❓ Unknown command: <code>' + $json.command + '</code>\\n\\nType /help to see available commands.' }}",
         "additionalFields": { "parse_mode": "HTML" }
       },
       "id": "unknown-cmd",
       "name": "Unknown Command",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1500, 660],
+      "position": [1100, 740],
       "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
     }
   ],
   "connections": {
-    "Telegram Trigger": { "main": [[{ "node": "Extract Command", "type": "main", "index": 0 }]] },
-    "Extract Command": { "main": [[{ "node": "Is Command?", "type": "main", "index": 0 }]] },
-    "Is Command?": {
+    "Telegram Trigger": { "main": [[{ "node": "Extract Info", "type": "main", "index": 0 }]] },
+    "Extract Info": { "main": [[{ "node": "Verify User", "type": "main", "index": 0 }]] },
+    "Verify User": { "main": [[{ "node": "Determine Route", "type": "main", "index": 0 }]] },
+    "Determine Route": { "main": [[{ "node": "Route Switch", "type": "main", "index": 0 }]] },
+    "Route Switch": {
       "main": [
-        [],
-        [{ "node": "Verify User", "type": "main", "index": 0 }]
-      ]
-    },
-    "Verify User": { "main": [[{ "node": "Onboarded?", "type": "main", "index": 0 }]] },
-    "Onboarded?": {
-      "main": [
-        [{ "node": "Match Command", "type": "main", "index": 0 }],
-        [{ "node": "Redirect to Start", "type": "main", "index": 0 }]
-      ]
-    },
-    "Match Command": { "main": [[{ "node": "Route Action", "type": "main", "index": 0 }]] },
-    "Route Action": {
-      "main": [
+        [{ "node": "Execute Onboarding", "type": "main", "index": 0 }],
         [{ "node": "Execute Workflow", "type": "main", "index": 0 }],
         [{ "node": "Send Help", "type": "main", "index": 0 }],
+        [{ "node": "Send Welcome Back", "type": "main", "index": 0 }],
         [{ "node": "Unknown Command", "type": "main", "index": 0 }]
       ]
     }

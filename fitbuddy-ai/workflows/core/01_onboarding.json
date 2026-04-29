@@ -2,23 +2,18 @@
   "name": "01 — Onboarding",
   "nodes": [
     {
-      "parameters": {
-        "updates": ["message"],
-        "additionalFields": {}
-      },
-      "id": "tg-trigger",
-      "name": "Telegram Trigger",
-      "type": "n8n-nodes-base.telegramTrigger",
+      "parameters": {},
+      "id": "exec-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [100, 300],
-      "webhookId": "fitbuddy-onboarding",
-      "credentials": { "telegramApi": { "id": "fitbuddy-telegram-1", "name": "Telegram Bot" } }
+      "position": [100, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT id, first_name, onboarding_complete, onboarding_step FROM users WHERE telegram_id = $1",
-        "additionalFields": { "queryParams": "={{ $json.message.from.id }}" }
+        "additionalFields": { "queryParams": "={{ $json.telegram_id }}" }
       },
       "id": "check-user",
       "name": "Check User",
@@ -41,7 +36,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
         "text": "Welcome back! Type /help to see all available commands.",
         "additionalFields": {}
       },
@@ -56,7 +51,7 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO users (telegram_id, username, first_name, onboarding_step)\nVALUES ($1, $2, $3, 'ask_name')\nON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, updated_at=now()\nRETURNING id, telegram_id, first_name, onboarding_step",
-        "additionalFields": { "queryParams": "={{ [$('Telegram Trigger').item.json.message.from.id, $('Telegram Trigger').item.json.message.from.username || '', $('Telegram Trigger').item.json.message.from.first_name || 'Friend'].join(',') }}" }
+        "additionalFields": { "queryParams": "={{ [$('Execute Workflow Trigger').item.json.telegram_id, $('Execute Workflow Trigger').item.json.username || '', $('Execute Workflow Trigger').item.json.first_name || 'Friend'].join(',') }}" }
       },
       "id": "upsert-user",
       "name": "Upsert User",
@@ -103,8 +98,8 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "Welcome to FitBuddy AI! I'm your personal fitness and nutrition coach powered by AI.\n\nLet's set up your profile — about 2 minutes.\n\nWhat's your first name?",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "text": "Welcome to FitBuddy AI! 🏋️\n\nI'm your personal fitness and nutrition coach powered by AI.\n\nLet's set up your profile — about 2 minutes.\n\nWhat's your first name?",
         "additionalFields": {}
       },
       "id": "ask-name",
@@ -116,8 +111,8 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "Nice to meet you!\n\nHow old are you? (type a number, e.g. 28)",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "text": "Nice to meet you! 😊\n\nHow old are you? (type a number, e.g. 28)",
         "additionalFields": {}
       },
       "id": "ask-age",
@@ -129,7 +124,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
         "text": "What's your gender?\n\nReply with: male, female, or other",
         "additionalFields": {}
       },
@@ -142,7 +137,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
         "text": "What's your height in cm?\n\nExample: 175",
         "additionalFields": {}
       },
@@ -155,7 +150,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
         "text": "What's your current weight in kg?\n\nExample: 78",
         "additionalFields": {}
       },
@@ -168,7 +163,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
         "text": "How active are you on a typical day?\n\nReply with one of:\n- sedentary (desk job, little movement)\n- light (light exercise 1-3x/week)\n- moderate (moderate exercise 3-5x/week)\n- active (hard exercise 6-7x/week)\n- very_active (very hard exercise, physical job)",
         "additionalFields": {}
       },
@@ -181,7 +176,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
         "text": "What's your main fitness goal?\n\nReply with one of:\n- toning (fat loss and toning)\n- mass (build muscle)\n- maintenance (maintain current weight)",
         "additionalFields": {}
       },
@@ -194,7 +189,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const triggerData = $('Telegram Trigger').item.json;\nconst convState = $('Get Conv State').item.json;\nconst userRow = $('Upsert User').item.json;\n\nconst inputValue = (triggerData.message?.text || '').trim().toLowerCase();\n\nconst step = convState.step;\nlet context = {};\ntry { context = typeof convState.context === 'string' ? JSON.parse(convState.context) : (convState.context || {}); } catch(e) { context = {}; }\n\nconst stepMap = {\n  ask_name:     { key: 'name',           next: 'ask_age' },\n  ask_age:      { key: 'age',            next: 'ask_gender', fn: v => parseInt(v) || 25 },\n  ask_gender:   { key: 'gender',         next: 'ask_height' },\n  ask_height:   { key: 'height_cm',      next: 'ask_weight', fn: v => parseFloat(v) || 170 },\n  ask_weight:   { key: 'weight_kg',      next: 'ask_activity', fn: v => parseFloat(v) || 70 },\n  ask_activity: { key: 'activity_level', next: 'ask_goal' },\n  ask_goal:     { key: 'goal',           next: 'complete' }\n};\n\nconst cur = stepMap[step];\nif (cur) {\n  context[cur.key] = cur.fn ? cur.fn(inputValue) : inputValue;\n}\n\nlet dailyCalorieTarget = null;\nif (context.weight_kg && context.height_cm && context.age && context.gender && context.activity_level && context.goal) {\n  const isMale = context.gender === 'male';\n  let bmr = isMale\n    ? 10*context.weight_kg + 6.25*context.height_cm - 5*context.age + 5\n    : 10*context.weight_kg + 6.25*context.height_cm - 5*context.age - 161;\n  const mult = {sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};\n  const tdee = bmr * (mult[context.activity_level] || 1.2);\n  const offset = {toning:-400,mass:300,maintenance:0};\n  dailyCalorieTarget = Math.round(tdee + (offset[context.goal] || 0));\n  context.daily_calorie_target = dailyCalorieTarget;\n}\n\nconst nextStep = cur ? cur.next : step;\n\nreturn [{ json: {\n  userId: userRow.id,\n  telegramId: triggerData.message.from.id,\n  nextStep,\n  context,\n  dailyCalorieTarget,\n  isComplete: nextStep === 'complete'\n} }];"
+        "jsCode": "const triggerData = $('Execute Workflow Trigger').item.json;\nconst convState = $('Get Conv State').item.json;\nconst userRow = $('Upsert User').item.json;\n\nconst inputValue = (triggerData.message_text || '').trim().toLowerCase();\n\nconst step = convState.step;\nlet context = {};\ntry { context = typeof convState.context === 'string' ? JSON.parse(convState.context) : (convState.context || {}); } catch(e) { context = {}; }\n\nconst stepMap = {\n  ask_name:     { key: 'name',           next: 'ask_age' },\n  ask_age:      { key: 'age',            next: 'ask_gender', fn: v => parseInt(v) || 25 },\n  ask_gender:   { key: 'gender',         next: 'ask_height' },\n  ask_height:   { key: 'height_cm',      next: 'ask_weight', fn: v => parseFloat(v) || 170 },\n  ask_weight:   { key: 'weight_kg',      next: 'ask_activity', fn: v => parseFloat(v) || 70 },\n  ask_activity: { key: 'activity_level', next: 'ask_goal' },\n  ask_goal:     { key: 'goal',           next: 'complete' }\n};\n\nconst cur = stepMap[step];\nif (cur) {\n  context[cur.key] = cur.fn ? cur.fn(inputValue) : inputValue;\n}\n\nlet dailyCalorieTarget = null;\nif (context.weight_kg && context.height_cm && context.age && context.gender && context.activity_level && context.goal) {\n  const isMale = context.gender === 'male';\n  let bmr = isMale\n    ? 10*context.weight_kg + 6.25*context.height_cm - 5*context.age + 5\n    : 10*context.weight_kg + 6.25*context.height_cm - 5*context.age - 161;\n  const mult = {sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};\n  const tdee = bmr * (mult[context.activity_level] || 1.2);\n  const offset = {toning:-400,mass:300,maintenance:0};\n  dailyCalorieTarget = Math.round(tdee + (offset[context.goal] || 0));\n  context.daily_calorie_target = dailyCalorieTarget;\n}\n\nconst nextStep = cur ? cur.next : step;\n\nreturn [{ json: {\n  userId: userRow.id,\n  telegramId: triggerData.telegram_id,\n  nextStep,\n  context,\n  dailyCalorieTarget,\n  isComplete: nextStep === 'complete'\n} }];"
       },
       "id": "process-response",
       "name": "Process Response",
@@ -256,7 +251,7 @@
     {
       "parameters": {
         "chatId": "={{ $('Process Response').item.json.telegramId }}",
-        "text": "={{ 'Profile complete!\n\nName: ' + $('Save Profile').item.json.first_name + '\nAge: ' + $('Save Profile').item.json.age + '\nWeight: ' + $('Save Profile').item.json.weight_kg + 'kg | Height: ' + $('Save Profile').item.json.height_cm + 'cm\nGoal: ' + $('Save Profile').item.json.goal + '\nDaily target: ' + $('Save Profile').item.json.daily_calorie_target + ' kcal\n\nI will send your daily check-in every morning at 8:00 AM.\n\nOr start now with /checkin\n\nCommands:\n/checkin - Daily check-in\n/analyze - Analyze food photo\n/supplements - Supplement advice\n/progress - Weekly report\n/help - All commands' }}",
+        "text": "={{ '✅ Profile complete!\\n\\n👤 ' + $('Save Profile').item.json.first_name + '\\n🎂 Age: ' + $('Save Profile').item.json.age + '\\n⚖️ ' + $('Save Profile').item.json.weight_kg + 'kg | 📏 ' + $('Save Profile').item.json.height_cm + 'cm\\n🎯 Goal: ' + $('Save Profile').item.json.goal + '\\n🔥 Daily target: ' + $('Save Profile').item.json.daily_calorie_target + ' kcal\\n\\nYou are all set! Start with:\\n/checkin — Log your day\\n/help — All commands' }}",
         "additionalFields": {}
       },
       "id": "send-profile",
@@ -268,7 +263,7 @@
     }
   ],
   "connections": {
-    "Telegram Trigger": { "main": [[{ "node": "Check User", "type": "main", "index": 0 }]] },
+    "Execute Workflow Trigger": { "main": [[{ "node": "Check User", "type": "main", "index": 0 }]] },
     "Check User": { "main": [[{ "node": "Already Onboarded?", "type": "main", "index": 0 }]] },
     "Already Onboarded?": {
       "main": [
