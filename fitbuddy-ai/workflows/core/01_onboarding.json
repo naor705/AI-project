@@ -13,7 +13,7 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT id, first_name, onboarding_complete, onboarding_step FROM users WHERE telegram_id = $1",
-        "additionalFields": { "queryParams": "={{ $json.telegram_id }}" }
+        "additionalFields": { "queryParams": "={{ $json.telegramId }}" }
       },
       "id": "check-user",
       "name": "Check User",
@@ -36,7 +36,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "Welcome back! Type /help to see all available commands.",
         "additionalFields": {}
       },
@@ -51,7 +51,7 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO users (telegram_id, username, first_name, onboarding_step)\nVALUES ($1, $2, $3, 'ask_name')\nON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, updated_at=now()\nRETURNING id, telegram_id, first_name, onboarding_step",
-        "additionalFields": { "queryParams": "={{ [$('Execute Workflow Trigger').item.json.telegram_id, $('Execute Workflow Trigger').item.json.username || '', $('Execute Workflow Trigger').item.json.first_name || 'Friend'].join(',') }}" }
+        "additionalFields": { "queryParams": "={{ [$('Execute Workflow Trigger').item.json.telegramId, $('Execute Workflow Trigger').item.json.username || '', $('Execute Workflow Trigger').item.json.firstName || 'Friend'].join(',') }}" }
       },
       "id": "upsert-user",
       "name": "Upsert User",
@@ -98,7 +98,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "Welcome to FitBuddy AI! 🏋️\n\nI'm your personal fitness and nutrition coach powered by AI.\n\nLet's set up your profile — about 2 minutes.\n\nWhat's your first name?",
         "additionalFields": {}
       },
@@ -111,7 +111,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "Nice to meet you! 😊\n\nHow old are you? (type a number, e.g. 28)",
         "additionalFields": {}
       },
@@ -124,7 +124,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "What's your gender?\n\nReply with: male, female, or other",
         "additionalFields": {}
       },
@@ -137,7 +137,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "What's your height in cm?\n\nExample: 175",
         "additionalFields": {}
       },
@@ -150,7 +150,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "What's your current weight in kg?\n\nExample: 78",
         "additionalFields": {}
       },
@@ -163,7 +163,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "How active are you on a typical day?\n\nReply with one of:\n- sedentary (desk job, little movement)\n- light (light exercise 1-3x/week)\n- moderate (moderate exercise 3-5x/week)\n- active (hard exercise 6-7x/week)\n- very_active (very hard exercise, physical job)",
         "additionalFields": {}
       },
@@ -176,7 +176,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegram_id }}",
+        "chatId": "={{ $('Execute Workflow Trigger').item.json.telegramId }}",
         "text": "What's your main fitness goal?\n\nReply with one of:\n- toning (fat loss and toning)\n- mass (build muscle)\n- maintenance (maintain current weight)",
         "additionalFields": {}
       },
@@ -189,7 +189,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const triggerData = $('Execute Workflow Trigger').item.json;\nconst convState = $('Get Conv State').item.json;\nconst userRow = $('Upsert User').item.json;\n\nconst inputValue = (triggerData.message_text || '').trim().toLowerCase();\n\nconst step = convState.step;\nlet context = {};\ntry { context = typeof convState.context === 'string' ? JSON.parse(convState.context) : (convState.context || {}); } catch(e) { context = {}; }\n\nconst stepMap = {\n  ask_name:     { key: 'name',           next: 'ask_age' },\n  ask_age:      { key: 'age',            next: 'ask_gender', fn: v => parseInt(v) || 25 },\n  ask_gender:   { key: 'gender',         next: 'ask_height' },\n  ask_height:   { key: 'height_cm',      next: 'ask_weight', fn: v => parseFloat(v) || 170 },\n  ask_weight:   { key: 'weight_kg',      next: 'ask_activity', fn: v => parseFloat(v) || 70 },\n  ask_activity: { key: 'activity_level', next: 'ask_goal' },\n  ask_goal:     { key: 'goal',           next: 'complete' }\n};\n\nconst cur = stepMap[step];\nif (cur) {\n  context[cur.key] = cur.fn ? cur.fn(inputValue) : inputValue;\n}\n\nlet dailyCalorieTarget = null;\nif (context.weight_kg && context.height_cm && context.age && context.gender && context.activity_level && context.goal) {\n  const isMale = context.gender === 'male';\n  let bmr = isMale\n    ? 10*context.weight_kg + 6.25*context.height_cm - 5*context.age + 5\n    : 10*context.weight_kg + 6.25*context.height_cm - 5*context.age - 161;\n  const mult = {sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};\n  const tdee = bmr * (mult[context.activity_level] || 1.2);\n  const offset = {toning:-400,mass:300,maintenance:0};\n  dailyCalorieTarget = Math.round(tdee + (offset[context.goal] || 0));\n  context.daily_calorie_target = dailyCalorieTarget;\n}\n\nconst nextStep = cur ? cur.next : step;\n\nreturn [{ json: {\n  userId: userRow.id,\n  telegramId: triggerData.telegram_id,\n  nextStep,\n  context,\n  dailyCalorieTarget,\n  isComplete: nextStep === 'complete'\n} }];"
+        "jsCode": "const triggerData = $('Execute Workflow Trigger').item.json;\nconst convState = $('Get Conv State').item.json;\nconst userRow = $('Upsert User').item.json;\n\nconst inputValue = (triggerData.text || '').trim().toLowerCase();\n\nconst step = convState.step;\nlet context = {};\ntry { context = typeof convState.context === 'string' ? JSON.parse(convState.context) : (convState.context || {}); } catch(e) { context = {}; }\n\nconst stepMap = {\n  ask_name:     { key: 'name',           next: 'ask_age' },\n  ask_age:      { key: 'age',            next: 'ask_gender', fn: v => parseInt(v) || 25 },\n  ask_gender:   { key: 'gender',         next: 'ask_height' },\n  ask_height:   { key: 'height_cm',      next: 'ask_weight', fn: v => parseFloat(v) || 170 },\n  ask_weight:   { key: 'weight_kg',      next: 'ask_activity', fn: v => parseFloat(v) || 70 },\n  ask_activity: { key: 'activity_level', next: 'ask_goal' },\n  ask_goal:     { key: 'goal',           next: 'complete' }\n};\n\nconst cur = stepMap[step];\nif (cur) {\n  context[cur.key] = cur.fn ? cur.fn(inputValue) : inputValue;\n}\n\nlet dailyCalorieTarget = null;\nif (context.weight_kg && context.height_cm && context.age && context.gender && context.activity_level && context.goal) {\n  const isMale = context.gender === 'male';\n  let bmr = isMale\n    ? 10*context.weight_kg + 6.25*context.height_cm - 5*context.age + 5\n    : 10*context.weight_kg + 6.25*context.height_cm - 5*context.age - 161;\n  const mult = {sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};\n  const tdee = bmr * (mult[context.activity_level] || 1.2);\n  const offset = {toning:-400,mass:300,maintenance:0};\n  dailyCalorieTarget = Math.round(tdee + (offset[context.goal] || 0));\n  context.daily_calorie_target = dailyCalorieTarget;\n}\n\nconst nextStep = cur ? cur.next : step;\n\nreturn [{ json: {\n  userId: userRow.id,\n  telegramId: triggerData.telegramId,\n  nextStep,\n  context,\n  dailyCalorieTarget,\n  isComplete: nextStep === 'complete'\n} }];"
       },
       "id": "process-response",
       "name": "Process Response",
