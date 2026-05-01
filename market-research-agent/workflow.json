@@ -1,0 +1,103 @@
+{
+  "name": "Feature — Beauty Market Research Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "market-research",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "webhookId": "beauty-market-research"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst product = (body.product_name ?? '').trim() || null;\nconst goal = (body.goal ?? 'user engagement and viral content').trim();\n\nconst productContext = product\n  ? `The product is: \"${product}\". Tailor all queries, hooks, and ideas around it. Use \"${product}\" wherever a product name fits naturally.`\n  : 'No specific product provided. Generate niche-level beauty content. Where a product name would fit, use the placeholder \"{product}\" so it stays interchangeable.';\n\nconst userPrompt = `Generate a market research report for the beauty niche.\n\nGoal: ${goal}\n${productContext}\n\nReturn a JSON object with exactly this schema:\n{\n  \"product\": \"<product name or null>\",\n  \"queries\": [\"<5 search queries>\"],\n  \"urls\": [\"<3 URLs to scrape for insights>\"],\n  \"trends\": \"<paragraph describing current beauty trends>\",\n  \"content_patterns\": \"<paragraph describing what content formats drive high engagement>\",\n  \"ideas\": [\n    {\n      \"title\": \"<content idea title>\",\n      \"format\": \"<platform and format e.g. TikTok 30s video>\",\n      \"hook\": \"<opening line or visual hook>\",\n      \"why_it_works\": \"<engagement reasoning>\"\n    }\n  ]\n}\n\nRules:\n- queries: exactly 5 items\n- urls: exactly 3 items\n- ideas: exactly 3 items\n- Return ONLY the JSON object, nothing else`;\n\nreturn [{ json: { product, goal, userPrompt } }];"
+      },
+      "id": "build-prompt",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 2048,\n  \"system\": \"You are a Market Research Analyst Agent specialized in the beauty niche. Your focus is maximizing user engagement and creating viral content. When a product is provided, tailor all output to highlight that product. When no product is provided, generate niche-level beauty content that works for any brand or creator. Always return ONLY valid JSON matching the required schema — no extra text, no markdown fences.\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"{{ $json.userPrompt }}\" }\n  ]\n}",
+        "options": {}
+      },
+      "id": "call-claude",
+      "name": "Call Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ANTHROPIC_CRED_ID",
+          "name": "Anthropic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.content?.[0]?.text ?? '';\n\nlet cleaned = raw.trim();\nif (cleaned.startsWith('```')) {\n  cleaned = cleaned.split('```')[1] ?? '';\n  if (cleaned.startsWith('json')) cleaned = cleaned.slice(4);\n  cleaned = cleaned.trim();\n}\n\nlet result;\ntry {\n  result = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse Claude response', raw } }];\n}\n\nreturn [{ json: result }];"
+      },
+      "id": "parse-response",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "Call Claude API", "type": "main", "index": 0 }]]
+    },
+    "Call Claude API": {
+      "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
+    },
+    "Parse Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "market-research-beauty"
+}
