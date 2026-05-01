@@ -1,13 +1,11 @@
 {
-  "name": "05 — Scheduler (Dynamic Reminder Engine)",
+  "name": "05 — Scheduler",
   "nodes": [
     {
       "parameters": {
-        "rule": {
-          "interval": [{ "field": "cronExpression", "expression": "0 * * * *" }]
-        }
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 * * * *" }] }
       },
-      "id": "node-hourly-trigger",
+      "id": "hourly",
       "name": "Hourly Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
@@ -15,164 +13,95 @@
     },
     {
       "parameters": {
-        "url": "file:///home/node/fitbuddy/config/reminder-schedule.json",
-        "options": {}
+        "jsCode": "const now = new Date();\nconst h = now.getUTCHours();\nconst m = now.getUTCMinutes();\nconst dow = now.getUTCDay();\n\nconst reminders = [\n  { id:'morning_water',   cron:'0 8 * * *',   msg:'💧 Good morning, {name}! Start your day with a big glass of water. Hydration = performance.' },\n  { id:'midday_checkin',  cron:'0 13 * * *',  msg:'🥗 Lunchtime! Your daily target is {daily_calorie_target} kcal. Staying on track?' },\n  { id:'afternoon_work',  cron:'0 18 * * *',  msg:'🏋️ Still time for a workout! Even 20 minutes makes a difference. You got this, {name}.' },\n  { id:'evening_wind',    cron:'0 21 * * *',  msg:'🌙 Wind-down time. Aim for 7–9 hours tonight. Great sleep is where progress happens.' }\n];\n\nfunction matches(cron, hour, min, day) {\n  const [cm, ch, , , cd] = cron.split(' ');\n  return (ch==='*' || parseInt(ch)===hour) && (cm==='*' || parseInt(cm)===min) && (cd==='*' || parseInt(cd)===day);\n}\n\nconst due = reminders.filter(r => matches(r.cron, h, m, dow));\nif (!due.length) return [{ json: { skip: true } }];\nreturn due.map(r => ({ json: { ...r, skip: false } }));"
       },
-      "id": "node-read-reminders",
-      "name": "Read Reminder Schedule",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [300, 250]
-    },
-    {
-      "parameters": {
-        "url": "file:///home/node/fitbuddy/config/feature-registry.json",
-        "options": {}
-      },
-      "id": "node-read-registry",
-      "name": "Read Feature Registry",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [300, 400]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Determine which reminders are due right now\n// Runs every hour; checks if any reminder's cron matches this hour/minute\nconst now = new Date();\nconst currentHour = now.getUTCHours();\nconst currentMinute = now.getUTCMinutes();\nconst currentDayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon, ...\n\nconst remindersRaw = $('Read Reminder Schedule').item.json;\nconst registryRaw = $('Read Feature Registry').item.json;\n\nconst scheduleData = typeof remindersRaw === 'string' ? JSON.parse(remindersRaw) : remindersRaw;\nconst registry = typeof registryRaw === 'string' ? JSON.parse(registryRaw) : registryRaw;\n\nconst enabledFeatureIds = new Set(\n  (registry.features || []).filter(f => f.enabled).map(f => f.id)\n);\n\n// Parse cron expression: \"minute hour day-of-month month day-of-week\"\nfunction cronMatches(cronExpr, hour, minute, dayOfWeek) {\n  const parts = cronExpr.split(' ');\n  if (parts.length < 5) return false;\n  \n  const [cronMin, cronHour, , , cronDow] = parts;\n  \n  const hourMatch = cronHour === '*' || parseInt(cronHour) === hour;\n  const minMatch = cronMin === '*' || parseInt(cronMin) === minute;\n  const dowMatch = cronDow === '*' || parseInt(cronDow) === dayOfWeek;\n  \n  return hourMatch && minMatch && dowMatch;\n}\n\nconst dueReminders = (scheduleData.reminders || []).filter(r => {\n  if (!r.enabled) return false;\n  // Skip feature-specific reminders if the feature is disabled\n  if (r.feature_id && !enabledFeatureIds.has(r.feature_id)) return false;\n  return cronMatches(r.cron, currentHour, currentMinute, currentDayOfWeek);\n});\n\nif (dueReminders.length === 0) {\n  return [{ json: { skip: true, reason: `No reminders due at ${currentHour}:${String(currentMinute).padStart(2,'0')} UTC` } }];\n}\n\n// Return one item per due reminder\nreturn dueReminders.map(r => ({ json: { reminder: r, skip: false } }));"
-      },
-      "id": "node-find-due",
+      "id": "find-due",
       "name": "Find Due Reminders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [500, 300]
+      "position": [300, 300]
     },
     {
       "parameters": {
         "conditions": {
-          "conditions": [
-            {
-              "leftValue": "={{ $json.skip }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
-            }
-          ]
+          "boolean": [{ "value1": "={{ $json.skip }}", "value2": true }]
         }
       },
-      "id": "node-if-skip",
-      "name": "Any Reminders Due?",
+      "id": "if-skip",
+      "name": "Any Due?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [700, 300]
+      "typeVersion": 1,
+      "position": [500, 300]
     },
     {
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
-      "id": "node-per-reminder",
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "per-reminder",
       "name": "Per Reminder",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [900, 400]
+      "position": [700, 400]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, telegram_id, first_name, daily_calorie_target\nFROM users\nWHERE onboarding_complete = true",
+        "query": "SELECT id, telegram_id, first_name, daily_calorie_target FROM users WHERE onboarding_complete=true",
         "additionalFields": {}
       },
-      "id": "node-get-users",
-      "name": "Get All Active Users",
+      "id": "get-users",
+      "name": "Get Users",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
-      "position": [1100, 400],
-      "credentials": {
-        "postgres": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy DB"
-        }
-      }
+      "typeVersion": 1,
+      "position": [900, 400],
+      "credentials": { "postgres": { "id": "REPLACE_POSTGRES_CRED_ID", "name": "FitBuddy DB" } }
     },
     {
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
-      "id": "node-per-user",
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "per-user",
       "name": "Per User",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [1300, 400]
+      "position": [1100, 400]
     },
     {
       "parameters": {
-        "jsCode": "// Personalize the reminder message for this user\nconst user = $json;\nconst reminder = $('Per Reminder').item.json.reminder;\n\nlet message = reminder.message || '';\n\n// Substitute user-specific tokens\nmessage = message\n  .replace(/{name}/g, user.first_name || 'there')\n  .replace(/{daily_calorie_target}/g, user.daily_calorie_target || 2000);\n\nreturn [{ json: {\n  telegramId: user.telegram_id,\n  message,\n  reminderId: reminder.id,\n  reminderType: reminder.type\n} }];"
+        "jsCode": "const user = $json;\nconst reminder = $('Per Reminder').item.json;\nconst msg = reminder.msg\n  .replace(/{name}/g, user.first_name || 'there')\n  .replace(/{daily_calorie_target}/g, user.daily_calorie_target || 2000);\nreturn [{ json: { telegramId: user.telegram_id, message: msg } }];"
       },
-      "id": "node-personalize",
-      "name": "Personalize Message",
+      "id": "personalize",
+      "name": "Personalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1500, 400]
+      "position": [1300, 400]
     },
     {
       "parameters": {
         "chatId": "={{ $json.telegramId }}",
         "text": "={{ $json.message }}",
-        "additionalFields": { "parse_mode": "HTML" }
+        "additionalFields": {}
       },
-      "id": "node-send-reminder",
+      "id": "send-reminder",
       "name": "Send Reminder",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1700, 400],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "FitBuddy Telegram Bot"
-        }
-      }
+      "position": [1500, 400],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED_ID", "name": "FitBuddy Telegram Bot" } }
     }
   ],
   "connections": {
-    "Hourly Trigger": {
-      "main": [
-        [{ "node": "Read Reminder Schedule", "type": "main", "index": 0 }],
-        [{ "node": "Read Feature Registry", "type": "main", "index": 0 }]
-      ]
-    },
-    "Read Reminder Schedule": {
-      "main": [[{ "node": "Find Due Reminders", "type": "main", "index": 0 }]]
-    },
-    "Read Feature Registry": {
-      "main": [[{ "node": "Find Due Reminders", "type": "main", "index": 0 }]]
-    },
-    "Find Due Reminders": {
-      "main": [[{ "node": "Any Reminders Due?", "type": "main", "index": 0 }]]
-    },
-    "Any Reminders Due?": {
+    "Hourly Trigger": { "main": [[{ "node": "Find Due Reminders", "type": "main", "index": 0 }]] },
+    "Find Due Reminders": { "main": [[{ "node": "Any Due?", "type": "main", "index": 0 }]] },
+    "Any Due?": {
       "main": [
         [],
         [{ "node": "Per Reminder", "type": "main", "index": 0 }]
       ]
     },
-    "Per Reminder": {
-      "main": [[{ "node": "Get All Active Users", "type": "main", "index": 0 }]]
-    },
-    "Get All Active Users": {
-      "main": [[{ "node": "Per User", "type": "main", "index": 0 }]]
-    },
-    "Per User": {
-      "main": [[{ "node": "Personalize Message", "type": "main", "index": 0 }]]
-    },
-    "Personalize Message": {
-      "main": [[{ "node": "Send Reminder", "type": "main", "index": 0 }]]
-    },
-    "Send Reminder": {
-      "main": [[{ "node": "Per User", "type": "main", "index": 0 }]]
-    }
+    "Per Reminder": { "main": [[{ "node": "Get Users", "type": "main", "index": 0 }]] },
+    "Get Users": { "main": [[{ "node": "Per User", "type": "main", "index": 0 }]] },
+    "Per User": { "main": [[{ "node": "Personalize", "type": "main", "index": 0 }]] },
+    "Personalize": { "main": [[{ "node": "Send Reminder", "type": "main", "index": 0 }]] },
+    "Send Reminder": { "main": [[{ "node": "Per User", "type": "main", "index": 0 }]] }
   },
   "active": true,
   "settings": { "executionOrder": "v1" },
-  "versionId": "05-scheduler-v1",
-  "id": "5",
-  "meta": { "instanceId": "fitbuddy" }
+  "id": "5"
 }
