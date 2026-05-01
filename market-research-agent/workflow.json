@@ -67,6 +67,56 @@
     },
     {
       "parameters": {
+        "jsCode": "const research = $input.first().json;\nconst product = research.product || null;\nconst productLine = product ? `Product: ${product}` : 'No specific product — keep content niche-level and use \"{product}\" as a placeholder where needed.';\n\nconst ideasText = (research.ideas || []).map((idea, i) =>\n  `Idea ${i+1}: ${idea.title}\\nFormat: ${idea.format}\\nHook: ${idea.hook}`\n).join('\\n\\n');\n\nconst userPrompt = `You are a viral beauty content creator. Using the research below, generate ready-to-post content.\\n\\n${productLine}\\nTrends: ${research.trends}\\nWhat performs well: ${research.content_patterns}\\n\\nContent ideas to execute:\\n${ideasText}\\n\\nFor each idea, create the actual content. Return ONLY a JSON object with this schema:\\n{\\n  \"product\": \"<product name or null>\",\\n  \"content_pieces\": [\\n    {\\n      \"title\": \"<idea title>\",\\n      \"platform\": \"<TikTok / Instagram Reels / YouTube Shorts>\",\\n      \"caption\": \"<full ready-to-post caption with emojis>\",\\n      \"script\": \"<full video script or spoken lines, 30-60 seconds>\",\\n      \"hashtags\": [\"<10 relevant hashtags>\"],\\n      \"cta\": \"<call to action to maximize engagement>\"\\n    }\\n  ]\\n}\\n\\nRules:\\n- content_pieces: exactly 3 items matching the 3 ideas\\n- captions should be engaging, conversational, and platform-native\\n- scripts should feel natural, not salesy\\n- Return ONLY the JSON object, nothing else`;\n\nconst apiBody = JSON.stringify({\n  model: 'claude-sonnet-4-6',\n  max_tokens: 3000,\n  system: 'You are an expert viral beauty content creator who writes captions, video scripts, and engagement hooks that drive real results on TikTok and Instagram. Always return ONLY valid JSON — no extra text, no markdown fences.',\n  messages: [{ role: 'user', content: userPrompt }]\n});\n\nreturn [{ json: { research, apiBody } }];"
+      },
+      "id": "build-content-prompt",
+      "name": "Build Content Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ $json.apiBody }}",
+        "options": {}
+      },
+      "id": "call-claude-content",
+      "name": "Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1100, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ANTHROPIC_CRED_ID",
+          "name": "Anthropic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const research = $('Build Content Prompt').first().json.research;\nconst raw = $input.first().json.content?.[0]?.text ?? '';\n\nlet cleaned = raw.trim();\nif (cleaned.startsWith('```')) {\n  cleaned = cleaned.split('```')[1] ?? '';\n  if (cleaned.startsWith('json')) cleaned = cleaned.slice(4);\n  cleaned = cleaned.trim();\n}\n\nlet content;\ntry {\n  content = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse content response', raw } }];\n}\n\nreturn [{ json: { research, content } }];"
+      },
+      "id": "parse-content",
+      "name": "Parse Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify($json) }}",
         "options": {
@@ -77,7 +127,7 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [900, 300]
+      "position": [1500, 300]
     }
   ],
   "connections": {
@@ -91,6 +141,15 @@
       "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
     },
     "Parse Response": {
+      "main": [[{ "node": "Build Content Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Content Prompt": {
+      "main": [[{ "node": "Generate Content", "type": "main", "index": 0 }]]
+    },
+    "Generate Content": {
+      "main": [[{ "node": "Parse Content", "type": "main", "index": 0 }]]
+    },
+    "Parse Content": {
       "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
     }
   },
