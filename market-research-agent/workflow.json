@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst product = (body.product_name ?? '').trim() || null;\nconst goal = (body.goal ?? 'user engagement and viral content').trim();\n\nconst productContext = product\n  ? `The product is: \"${product}\". Tailor all queries, hooks, and ideas around it. Use \"${product}\" wherever a product name fits naturally.`\n  : 'No specific product provided. Generate niche-level beauty content. Where a product name would fit, use the placeholder \"{product}\" so it stays interchangeable.';\n\nconst userPrompt = `Generate a market research report for the beauty niche.\n\nGoal: ${goal}\n${productContext}\n\nReturn a JSON object with exactly this schema:\n{\n  \"product\": \"<product name or null>\",\n  \"queries\": [\"<5 search queries>\"],\n  \"urls\": [\"<3 URLs to scrape for insights>\"],\n  \"trends\": \"<paragraph describing current beauty trends>\",\n  \"content_patterns\": \"<paragraph describing what content formats drive high engagement>\",\n  \"ideas\": [\n    {\n      \"title\": \"<content idea title>\",\n      \"format\": \"<platform and format e.g. TikTok 30s video>\",\n      \"hook\": \"<opening line or visual hook>\",\n      \"why_it_works\": \"<engagement reasoning>\"\n    }\n  ]\n}\n\nRules:\n- queries: exactly 5 items\n- urls: exactly 3 items\n- ideas: exactly 3 items\n- Return ONLY the JSON object, nothing else`;\n\nreturn [{ json: { product, goal, userPrompt } }];"
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst product = (body.product_name ?? '').trim() || null;\nconst goal = (body.goal ?? 'user engagement and viral content').trim();\n\nconst productContext = product\n  ? `The product is: \"${product}\". Tailor all queries, hooks, and ideas around it. Use \"${product}\" wherever a product name fits naturally.`\n  : 'No specific product provided. Generate niche-level beauty content. Where a product name would fit, use the placeholder \"{product}\" so it stays interchangeable.';\n\nconst userPrompt = `Generate a market research report for the beauty niche.\\n\\nGoal: ${goal}\\n${productContext}\\n\\nReturn a JSON object with exactly this schema:\\n{\\n  \"product\": \"<product name or null>\",\\n  \"queries\": [\"<5 search queries>\"],\\n  \"urls\": [\"<3 URLs to scrape for insights>\"],\\n  \"trends\": \"<paragraph describing current beauty trends>\",\\n  \"content_patterns\": \"<paragraph describing what content formats drive high engagement>\",\\n  \"ideas\": [\\n    {\\n      \"title\": \"<content idea title>\",\\n      \"format\": \"<platform and format e.g. TikTok 30s video>\",\\n      \"hook\": \"<opening line or visual hook>\",\\n      \"why_it_works\": \"<engagement reasoning>\"\\n    }\\n  ]\\n}\\n\\nRules:\\n- queries: exactly 5 items\\n- urls: exactly 3 items\\n- ideas: exactly 3 items\\n- Return ONLY the JSON object, nothing else`;\n\nconst apiBody = JSON.stringify({\n  model: 'claude-sonnet-4-6',\n  max_tokens: 2048,\n  system: 'You are a Market Research Analyst Agent specialized in the beauty niche. Your focus is maximizing user engagement and creating viral content. When a product is provided, tailor all output to highlight that product. When no product is provided, generate niche-level beauty content that works for any brand or creator. Always return ONLY valid JSON matching the required schema — no extra text, no markdown fences.',\n  messages: [{ role: 'user', content: userPrompt }]\n});\n\nreturn [{ json: { product, goal, apiBody } }];"
       },
       "id": "build-prompt",
       "name": "Build Prompt",
@@ -39,11 +39,8 @@
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": []
-        },
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 2048,\n  \"system\": \"You are a Market Research Analyst Agent specialized in the beauty niche. Your focus is maximizing user engagement and creating viral content. When a product is provided, tailor all output to highlight that product. When no product is provided, generate niche-level beauty content that works for any brand or creator. Always return ONLY valid JSON matching the required schema — no extra text, no markdown fences.\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"{{ $json.userPrompt }}\" }\n  ]\n}",
+        "specifyBody": "string",
+        "body": "={{ $json.apiBody }}",
         "options": {}
       },
       "id": "call-claude",
