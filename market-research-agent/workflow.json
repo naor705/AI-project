@@ -129,12 +129,11 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.heygen.com/v2/video/generate",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "content-type", "value": "application/json" }
+            { "name": "content-type", "value": "application/json" },
+            { "name": "X-Api-Key", "value": "={{ $vars.HEYGEN_API_KEY }}" }
           ]
         },
         "sendBody": true,
@@ -146,13 +145,7 @@
       "name": "Submit to HeyGen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1700, 150],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_HEYGEN_CRED_ID",
-          "name": "HeyGen API Key"
-        }
-      }
+      "position": [1700, 150]
     },
     {
       "parameters": {
@@ -178,13 +171,12 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.runwayml.com/v1/text_to_video",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             { "name": "content-type", "value": "application/json" },
-            { "name": "X-Runway-Version", "value": "2024-11-06" }
+            { "name": "X-Runway-Version", "value": "2024-11-06" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $vars.RUNWAY_API_KEY }}" }
           ]
         },
         "sendBody": true,
@@ -196,13 +188,7 @@
       "name": "Submit to Runway",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1700, 450],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_RUNWAY_CRED_ID",
-          "name": "Runway API Key"
-        }
-      }
+      "position": [1700, 450]
     },
     {
       "parameters": {
