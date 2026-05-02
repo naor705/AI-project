@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst product = (body.product_name ?? '').trim() || null;\nconst goal = (body.goal ?? 'user engagement and viral content').trim();\n\nconst productContext = product\n  ? `The product is: \"${product}\". Tailor all queries, hooks, and ideas around it. Use \"${product}\" wherever a product name fits naturally.`\n  : 'No specific product provided. Generate niche-level beauty content. Where a product name would fit, use the placeholder \"{product}\" so it stays interchangeable.';\n\nconst userPrompt = `Generate a market research report for the beauty niche.\\n\\nGoal: ${goal}\\n${productContext}\\n\\nReturn a JSON object with exactly this schema:\\n{\\n  \"product\": \"<product name or null>\",\\n  \"queries\": [\"<5 search queries>\"],\\n  \"urls\": [\"<3 URLs to scrape for insights>\"],\\n  \"trends\": \"<paragraph describing current beauty trends>\",\\n  \"content_patterns\": \"<paragraph describing what content formats drive high engagement>\",\\n  \"ideas\": [\\n    {\\n      \"title\": \"<content idea title>\",\\n      \"format\": \"<platform and format e.g. TikTok 30s video>\",\\n      \"hook\": \"<opening line or visual hook>\",\\n      \"why_it_works\": \"<engagement reasoning>\"\\n    }\\n  ]\\n}\\n\\nRules:\\n- queries: exactly 5 items\\n- urls: exactly 3 items\\n- ideas: exactly 3 items\\n- Return ONLY the JSON object, nothing else`;\n\nconst apiBody = JSON.stringify({\n  model: 'claude-sonnet-4-6',\n  max_tokens: 2048,\n  system: 'You are a Market Research Analyst Agent specialized in the beauty niche. Your focus is maximizing user engagement and creating viral content. When a product is provided, tailor all output to highlight that product. When no product is provided, generate niche-level beauty content that works for any brand or creator. Always return ONLY valid JSON matching the required schema — no extra text, no markdown fences.',\n  messages: [{ role: 'user', content: userPrompt }]\n});\n\nreturn [{ json: { product, goal, apiBody } }];"
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst product = (body.product_name ?? '').trim() || null;\nconst goal = (body.goal ?? 'user engagement and viral content').trim();\n\nconst productContext = product\n  ? `The product is: \"${product}\". Tailor all queries, hooks, and ideas around it. Use \"${product}\" wherever a product name fits naturally.`\n  : 'No specific product provided. Generate niche-level beauty content. Where a product name would fit, use the placeholder \"{product}\" so it stays interchangeable.';\n\nconst userPrompt = `Generate a market research report for the beauty niche.\\n\\nGoal: ${goal}\\n${productContext}\\n\\nReturn a JSON object with exactly this schema:\\n{\\n  \"product\": \"<product name or null>\",\\n  \"queries\": [\"<5 search queries>\"],\\n  \"urls\": [\"<3 URLs to scrape for insights>\"],\\n  \"trends\": \"<paragraph describing current beauty trends>\",\\n  \"content_patterns\": \"<paragraph describing what content formats drive high engagement>\",\\n  \"ideas\": [\\n    {\\n      \"title\": \"<content idea title>\",\\n      \"format\": \"<platform and format e.g. TikTok 30s video>\",\\n      \"hook\": \"<opening line or visual hook>\",\\n      \"why_it_works\": \"<engagement reasoning>\"\\n    }\\n  ]\\n}\\n\\nRules:\\n- queries: exactly 5 items\\n- urls: exactly 3 items\\n- ideas: exactly 6 items\\n- Return ONLY the JSON object, nothing else`;\n\nconst apiBody = JSON.stringify({\n  model: 'claude-sonnet-4-6',\n  max_tokens: 2048,\n  system: 'You are a Market Research Analyst Agent specialized in the beauty niche. Your focus is maximizing user engagement and creating viral content. Always return ONLY valid JSON matching the required schema — no extra text, no markdown fences.',\n  messages: [{ role: 'user', content: userPrompt }]\n});\n\nreturn [{ json: { product, goal, apiBody } }];"
       },
       "id": "build-prompt",
       "name": "Build Prompt",
@@ -57,17 +57,17 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.content?.[0]?.text ?? '';\n\nlet cleaned = raw.trim();\nif (cleaned.startsWith('```')) {\n  cleaned = cleaned.split('```')[1] ?? '';\n  if (cleaned.startsWith('json')) cleaned = cleaned.slice(4);\n  cleaned = cleaned.trim();\n}\n\nlet result;\ntry {\n  result = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse Claude response', raw } }];\n}\n\nreturn [{ json: result }];"
+        "jsCode": "const raw = $input.first().json.content?.[0]?.text ?? '';\nlet cleaned = raw.trim();\nif (cleaned.startsWith('```')) {\n  cleaned = cleaned.split('```')[1] ?? '';\n  if (cleaned.startsWith('json')) cleaned = cleaned.slice(4);\n  cleaned = cleaned.trim();\n}\nlet result;\ntry { result = JSON.parse(cleaned); }\ncatch (e) { return [{ json: { error: 'Failed to parse research response', raw } }]; }\nreturn [{ json: result }];"
       },
       "id": "parse-response",
-      "name": "Parse Response",
+      "name": "Parse Research",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [700, 300]
     },
     {
       "parameters": {
-        "jsCode": "const research = $input.first().json;\nconst product = research.product || null;\nconst productLine = product ? `Product: ${product}` : 'No specific product — keep content niche-level and use \"{product}\" as a placeholder where needed.';\n\nconst ideasText = (research.ideas || []).map((idea, i) =>\n  `Idea ${i+1}: ${idea.title}\\nFormat: ${idea.format}\\nHook: ${idea.hook}`\n).join('\\n\\n');\n\nconst userPrompt = `You are a viral beauty content creator. Using the research below, generate ready-to-post content.\\n\\n${productLine}\\nTrends: ${research.trends}\\nWhat performs well: ${research.content_patterns}\\n\\nContent ideas to execute:\\n${ideasText}\\n\\nFor each idea, create the actual content. Return ONLY a JSON object with this schema:\\n{\\n  \"product\": \"<product name or null>\",\\n  \"content_pieces\": [\\n    {\\n      \"title\": \"<idea title>\",\\n      \"platform\": \"<TikTok / Instagram Reels / YouTube Shorts>\",\\n      \"caption\": \"<full ready-to-post caption with emojis>\",\\n      \"script\": \"<full video script or spoken lines, 30-60 seconds>\",\\n      \"hashtags\": [\"<10 relevant hashtags>\"],\\n      \"cta\": \"<call to action to maximize engagement>\"\\n    }\\n  ]\\n}\\n\\nRules:\\n- content_pieces: exactly 3 items matching the 3 ideas\\n- captions should be engaging, conversational, and platform-native\\n- scripts should feel natural, not salesy\\n- Return ONLY the JSON object, nothing else`;\n\nconst apiBody = JSON.stringify({\n  model: 'claude-sonnet-4-6',\n  max_tokens: 3000,\n  system: 'You are an expert viral beauty content creator who writes captions, video scripts, and engagement hooks that drive real results on TikTok and Instagram. Always return ONLY valid JSON — no extra text, no markdown fences.',\n  messages: [{ role: 'user', content: userPrompt }]\n});\n\nreturn [{ json: { research, apiBody } }];"
+        "jsCode": "const research = $input.first().json;\nconst product = research.product || null;\nconst productLine = product\n  ? `Product: ${product}`\n  : 'No specific product — use \"{product}\" placeholder where needed.';\n\nconst ideasText = (research.ideas || []).map((idea, i) =>\n  `Idea ${i+1}: ${idea.title}\\nFormat: ${idea.format}\\nHook: ${idea.hook}`\n).join('\\n\\n');\n\nconst userPrompt = `You are a viral beauty content creator. Using the research below, generate ready-to-post content.\\n\\n${productLine}\\nTrends: ${research.trends}\\nWhat performs well: ${research.content_patterns}\\n\\nContent ideas to execute:\\n${ideasText}\\n\\nFor each idea, create the actual content. Return ONLY a JSON object:\\n{\\n  \"product\": \"<product name or null>\",\\n  \"content_pieces\": [\\n    {\\n      \"title\": \"<idea title>\",\\n      \"platform\": \"<TikTok / Instagram Reels / YouTube Shorts>\",\\n      \"caption\": \"<full ready-to-post caption with emojis>\",\\n      \"script\": \"<spoken video script, 30-60 seconds, natural tone>\",\\n      \"visual_prompt\": \"<short cinematic description of visuals for AI video generation>\",\\n      \"hashtags\": [\"<10 relevant hashtags>\"],\\n      \"cta\": \"<call to action to maximize engagement>\"\\n    }\\n  ]\\n}\\n\\nRules:\\n- content_pieces: exactly 6 items\\n- scripts must be natural and conversational, not salesy\\n- visual_prompt should be vivid and visual (used for AI video generation)\\n- Return ONLY the JSON object, nothing else`;\n\nconst apiBody = JSON.stringify({\n  model: 'claude-sonnet-4-6',\n  max_tokens: 4000,\n  system: 'You are an expert viral beauty content creator. Always return ONLY valid JSON — no extra text, no markdown fences.',\n  messages: [{ role: 'user', content: userPrompt }]\n});\n\nreturn [{ json: { research, apiBody } }];"
       },
       "id": "build-content-prompt",
       "name": "Build Content Prompt",
@@ -107,27 +107,144 @@
     },
     {
       "parameters": {
-        "jsCode": "const research = $('Build Content Prompt').first().json.research;\nconst raw = $input.first().json.content?.[0]?.text ?? '';\n\nlet cleaned = raw.trim();\nif (cleaned.startsWith('```')) {\n  cleaned = cleaned.split('```')[1] ?? '';\n  if (cleaned.startsWith('json')) cleaned = cleaned.slice(4);\n  cleaned = cleaned.trim();\n}\n\nlet content;\ntry {\n  content = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: { error: 'Failed to parse content response', raw } }];\n}\n\nreturn [{ json: { research, content } }];"
+        "jsCode": "const research = $('Build Content Prompt').first().json.research;\nconst raw = $input.first().json.content?.[0]?.text ?? '';\nlet cleaned = raw.trim();\nif (cleaned.startsWith('```')) {\n  cleaned = cleaned.split('```')[1] ?? '';\n  if (cleaned.startsWith('json')) cleaned = cleaned.slice(4);\n  cleaned = cleaned.trim();\n}\nlet content;\ntry { content = JSON.parse(cleaned); }\ncatch (e) { return [{ json: { error: 'Failed to parse content response', raw } }]; }\nconst pieces = content.content_pieces || [];\nreturn pieces.map(piece => ({ json: { ...piece, research_trends: research.trends } }));"
       },
-      "id": "parse-content",
-      "name": "Parse Content",
+      "id": "split-content",
+      "name": "Split Content Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1300, 300]
     },
     {
       "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst script = (item.script || '').slice(0, 1500);\nconst body = JSON.stringify({\n  video_inputs: [{\n    character: {\n      type: 'avatar',\n      avatar_id: 'Anna_public_3_20240108',\n      avatar_style: 'normal'\n    },\n    voice: {\n      type: 'text',\n      input_text: script,\n      voice_id: '1bd001e7e50f421d891986aad5158bc8',\n      speed: 1.0\n    },\n    background: {\n      type: 'color',\n      value: '#FAFAFA'\n    }\n  }],\n  dimension: { width: 1080, height: 1920 },\n  test: false\n});\nreturn [{ json: { ...item, heygenBody: body } }];"
+      },
+      "id": "build-heygen-body",
+      "name": "Build HeyGen Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 150]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.heygen.com/v2/video/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ $json.heygenBody }}",
+        "options": {}
+      },
+      "id": "submit-heygen",
+      "name": "Submit to HeyGen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1700, 150],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_HEYGEN_CRED_ID",
+          "name": "HeyGen API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Build HeyGen Body').item.json;\nconst response = $input.item.json;\nreturn [{ json: {\n  ...original,\n  heygen_video_id: response.data?.video_id || null,\n  heygen_status: response.data?.video_id ? 'processing' : 'failed'\n}}];"
+      },
+      "id": "merge-heygen",
+      "name": "Add HeyGen ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1900, 150]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst visualPrompt = (item.visual_prompt || item.hook || '').slice(0, 500);\nconst body = JSON.stringify({\n  promptText: `${visualPrompt} Beauty content, vertical video, vibrant colors, professional lighting`,\n  model: 'gen3a_turbo',\n  duration: 10,\n  ratio: '768:1280'\n});\nreturn [{ json: { ...item, runwayBody: body } }];"
+      },
+      "id": "build-runway-body",
+      "name": "Build Runway Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.runwayml.com/v1/text_to_video",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "X-Runway-Version", "value": "2024-11-06" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ $json.runwayBody }}",
+        "options": {}
+      },
+      "id": "submit-runway",
+      "name": "Submit to Runway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1700, 450],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_RUNWAY_CRED_ID",
+          "name": "Runway API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Build Runway Body').item.json;\nconst response = $input.item.json;\nreturn [{ json: {\n  ...original,\n  runway_task_id: response.id || null,\n  runway_status: response.id ? 'processing' : 'failed'\n}}];"
+      },
+      "id": "merge-runway",
+      "name": "Add Runway ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1900, 450]
+    },
+    {
+      "parameters": {
+        "mode": "multiplex"
+      },
+      "id": "merge-all",
+      "name": "Merge Videos",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [2100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst seen = new Set();\nconst pieces = [];\nfor (const item of items) {\n  const key = item.json.title;\n  if (!seen.has(key)) {\n    seen.add(key);\n    pieces.push({\n      index: pieces.length + 1,\n      title: item.json.title,\n      platform: item.json.platform,\n      caption: item.json.caption,\n      script: item.json.script,\n      hashtags: item.json.hashtags,\n      cta: item.json.cta,\n      heygen_video_id: item.json.heygen_video_id || null,\n      runway_task_id: item.json.runway_task_id || null\n    });\n  }\n}\nreturn [{ json: {\n  total: pieces.length,\n  message: 'Videos are being generated. Check HeyGen and Runway dashboards in 3-5 minutes to download your videos.',\n  heygen_check_url: 'https://app.heygen.com/videos',\n  runway_check_url: 'https://app.runwayml.com',\n  content_pieces: pieces\n}}];"
+      },
+      "id": "aggregate",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2300, 300]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify($json) }}",
-        "options": {
-          "responseCode": 200
-        }
+        "options": { "responseCode": 200 }
       },
       "id": "respond",
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1500, 300]
+      "position": [2500, 300]
     }
   ],
   "connections": {
@@ -138,18 +255,45 @@
       "main": [[{ "node": "Call Claude API", "type": "main", "index": 0 }]]
     },
     "Call Claude API": {
-      "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Parse Research", "type": "main", "index": 0 }]]
     },
-    "Parse Response": {
+    "Parse Research": {
       "main": [[{ "node": "Build Content Prompt", "type": "main", "index": 0 }]]
     },
     "Build Content Prompt": {
       "main": [[{ "node": "Generate Content", "type": "main", "index": 0 }]]
     },
     "Generate Content": {
-      "main": [[{ "node": "Parse Content", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Split Content Items", "type": "main", "index": 0 }]]
     },
-    "Parse Content": {
+    "Split Content Items": {
+      "main": [
+        [{ "node": "Build HeyGen Body", "type": "main", "index": 0 }],
+        [{ "node": "Build Runway Body", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build HeyGen Body": {
+      "main": [[{ "node": "Submit to HeyGen", "type": "main", "index": 0 }]]
+    },
+    "Submit to HeyGen": {
+      "main": [[{ "node": "Add HeyGen ID", "type": "main", "index": 0 }]]
+    },
+    "Add HeyGen ID": {
+      "main": [[{ "node": "Merge Videos", "type": "main", "index": 0 }]]
+    },
+    "Build Runway Body": {
+      "main": [[{ "node": "Submit to Runway", "type": "main", "index": 0 }]]
+    },
+    "Submit to Runway": {
+      "main": [[{ "node": "Add Runway ID", "type": "main", "index": 0 }]]
+    },
+    "Add Runway ID": {
+      "main": [[{ "node": "Merge Videos", "type": "main", "index": 1 }]]
+    },
+    "Merge Videos": {
+      "main": [[{ "node": "Aggregate Results", "type": "main", "index": 0 }]]
+    },
+    "Aggregate Results": {
       "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
     }
   },
